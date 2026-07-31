@@ -57,7 +57,7 @@ func pushEnvironment(environment, passphrase string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	sum := sha256.Sum256(plaintext)
+	sum := sha256.Sum256([]byte(payload))
 	client, err := loadClient()
 	if err != nil {
 		return 0, err

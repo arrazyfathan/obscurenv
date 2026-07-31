@@ -34,6 +34,25 @@ var envListCmd = &cobra.Command{
 	},
 }
 
+var envUseCmd = &cobra.Command{
+	Use:   "use <environment>",
+	Short: "Set the active environment without modifying .env",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config, err := loadProjectConfig()
+		if err != nil {
+			return err
+		}
+		config.ActiveEnvironment = args[0]
+		if err := saveProjectConfig(*config); err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Active environment set to %q.\n", config.ActiveEnvironment)
+		return nil
+	},
+}
+
 func init() {
 	envCmd.AddCommand(envListCmd)
+	envCmd.AddCommand(envUseCmd)
 }

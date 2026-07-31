@@ -7,3 +7,5 @@ tmp/
 coverage.out
 .gocache/
 .gomodcache/
+/go.work.sum
+.idea/

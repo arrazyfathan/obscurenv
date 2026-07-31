@@ -47,6 +47,7 @@ func init() {
 	rootCmd.AddCommand(swapCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(envCmd)
+	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 
@@ -72,6 +73,9 @@ func loadClient() (*api.Client, error) {
 func loadProjectConfig() (*ProjectConfig, error) {
 	data, err := os.ReadFile(projectConfigFile)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%s not found; run: obv init", projectConfigFile)
+		}
 		return nil, fmt.Errorf("read %s: %w", projectConfigFile, err)
 	}
 	var config ProjectConfig
@@ -111,6 +115,9 @@ func loadCredentials() (*Credentials, error) {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("credentials not found; run: obv login")
+		}
 		return nil, fmt.Errorf("read credentials: %w", err)
 	}
 	var credentials Credentials
