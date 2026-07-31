@@ -25,8 +25,9 @@ type Credentials struct {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "obv",
-	Short: "Zero-knowledge encrypted .env cloud storage",
+	Use:     "obv",
+	Short:   "Zero-knowledge encrypted .env cloud storage",
+	Version: normalizeVersion(version),
 }
 
 func Execute() {
@@ -37,6 +38,7 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.SetVersionTemplate(FormatVersion(versionInfo()))
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(pushCmd)
@@ -44,6 +46,7 @@ func init() {
 	rootCmd.AddCommand(swapCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(envCmd)
+	rootCmd.AddCommand(versionCmd)
 }
 
 func apiBaseURL() string {

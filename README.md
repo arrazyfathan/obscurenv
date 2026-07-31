@@ -80,6 +80,7 @@ Optional:
 │       ├── api/
 │       └── crypto/
 ├── AGENTS.md
+├── .env.example
 ├── docker-compose.yml
 ├── go.work
 └── README.md
@@ -100,12 +101,17 @@ This starts:
 
 The backend runs database migrations automatically on startup.
 
-Build the CLI:
+Install the CLI:
 
 ```sh
-cd cli
-go build -o ../bin/obv .
-cd ..
+./install.sh
+```
+
+The installer builds `cli/` and copies `obv` to `~/.local/bin` by default. If that directory is not on your `PATH`, add it for zsh on macOS:
+
+```sh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
 Point the CLI at your self-hosted server:
@@ -120,9 +126,144 @@ If `OBV_API_URL` is not set, the CLI currently defaults to:
 https://localhost:8080
 ```
 
+## Install The CLI
+
+From the repository root:
+
+```sh
+./install.sh
+```
+
+By default this installs:
+
+```text
+~/.local/bin/obv
+```
+
+To install somewhere else:
+
+```sh
+./install.sh --install-dir /usr/local/bin
+```
+
+You can also set `INSTALL_DIR`:
+
+```sh
+INSTALL_DIR="$HOME/bin" ./install.sh
+```
+
+Verify the install:
+
+```sh
+obv version
+```
+
+For development, build a repo-local versioned binary with Make:
+
+```sh
+make build
+./bin/obv version
+```
+
+## Make Commands
+
+Common development commands are available from the repository root:
+
+```sh
+make help
+make build
+make install
+make package
+make release
+make test
+make vet
+make check
+make backend
+make up
+make down
+```
+
+Useful targets:
+
+- `make build`: builds the CLI to `./bin/obv`.
+- `make install`: builds and installs `obv` using `./install.sh`.
+- `make package`: builds and writes a versioned tarball to `./dist`.
+- `make release`: runs tests and vet, then writes a versioned tarball to `./dist`.
+- `make test`: runs `go test ./backend/... ./cli/...`.
+- `make vet`: runs `go vet ./backend/... ./cli/...`.
+- `make check`: runs tests and vet.
+- `make backend`: runs the backend locally with `DATABASE_URL` and `ADDR`.
+- `make up`: starts PostgreSQL and backend with Docker Compose.
+- `make down`: stops Docker Compose services.
+
+You can override paths and local backend settings:
+
+```sh
+INSTALL_DIR="$HOME/bin" make install
+BACKEND_ADDR=:9090 make backend
+DATABASE_URL="postgres://user:password@localhost:5432/obv?sslmode=disable" make backend
+```
+
+## CLI Versioning
+
+The CLI uses SemVer. The source of truth is:
+
+```text
+VERSION
+```
+
+Current version:
+
+```sh
+make version
+```
+
+The build embeds:
+
+- `version`: from `VERSION`.
+- `commit`: current Git commit short SHA.
+- `built`: UTC build timestamp.
+
+Check a binary:
+
+```sh
+obv version
+obv --version
+```
+
+Example output:
+
+```text
+obv version 0.1.0
+commit: da4759e
+built: 2026-07-31T06:48:51Z
+```
+
+To cut a release:
+
+```sh
+printf '0.1.1\n' > VERSION
+make release
+git add VERSION Makefile install.sh README.md cli/cmd
+git commit -m "Release obv v0.1.1"
+git tag v0.1.1
+```
+
+This creates a package like:
+
+```text
+dist/obv_0.1.1_darwin_arm64.tar.gz
+```
+
 ## Server Configuration
 
-The backend uses environment variables:
+Example local environment variables are provided in `.env.example`:
+
+```sh
+cp .env.example .env
+```
+
+The backend uses:
 
 ```sh
 DATABASE_URL="postgres://obv:obv@localhost:5432/obv?sslmode=disable"
@@ -131,11 +272,20 @@ ADDR=":8080"
 
 On Vercel, the platform provides `PORT` automatically. Obscurenv uses `ADDR` when set, otherwise it listens on `PORT`, otherwise it falls back to `:8080`.
 
+The CLI uses:
+
+```sh
+OBV_API_URL="http://localhost:8080"
+```
+
 For Docker Compose, these are already configured in `docker-compose.yml`:
 
 ```text
 DATABASE_URL=postgres://obv:obv@postgres:5432/obv?sslmode=disable
 ADDR=:8080
+POSTGRES_USER=obv
+POSTGRES_PASSWORD=obv
+POSTGRES_DB=obv
 ```
 
 For a real server, set `DATABASE_URL` to your production PostgreSQL connection string and expose `ADDR` behind a reverse proxy or load balancer with HTTPS.
@@ -155,6 +305,7 @@ DATABASE_URL="postgres://user:password@host:5432/obv?sslmode=require"
 Start PostgreSQL first, then run:
 
 ```sh
+cp .env.example .env
 cd backend
 DATABASE_URL="postgres://obv:obv@localhost:5432/obv?sslmode=disable" ADDR=:8080 go run .
 ```
@@ -211,7 +362,7 @@ TOKEN="$(curl -s -X POST "$OBV_API_URL/api/v1/auth/login" \
 ### 3. Store The Token Locally
 
 ```sh
-./bin/obv login --token "$TOKEN"
+obv login --token "$TOKEN"
 ```
 
 This writes:
@@ -245,7 +396,7 @@ Expected response:
 Run this inside the folder where your `.env` file lives:
 
 ```sh
-/path/to/obscurenv/bin/obv init -p my-app
+obv init -p my-app
 ```
 
 This creates `.obv.json`:
@@ -262,7 +413,7 @@ This creates `.obv.json`:
 ### Push Local `.env`
 
 ```sh
-./bin/obv push -k "MySecretPassphrase123!" -e development
+obv push -k "MySecretPassphrase123!" -e development
 ```
 
 What happens:
@@ -276,7 +427,7 @@ What happens:
 ### Pull Remote `.env`
 
 ```sh
-./bin/obv pull -k "MySecretPassphrase123!" -e development
+obv pull -k "MySecretPassphrase123!" -e development
 ```
 
 What happens:
@@ -290,7 +441,7 @@ If the passphrase is wrong, `.env` is not modified.
 ### List Environments
 
 ```sh
-./bin/obv env ls
+obv env ls
 ```
 
 Example output:
@@ -304,7 +455,7 @@ staging
 ### Swap Active Environment
 
 ```sh
-./bin/obv swap production -k "MySecretPassphrase123!"
+obv swap production -k "MySecretPassphrase123!"
 ```
 
 What happens:
@@ -317,7 +468,7 @@ What happens:
 ### Run A Command Without Writing `.env`
 
 ```sh
-./bin/obv run -e staging -k "MySecretPassphrase123!" -- npm start
+obv run -e staging -k "MySecretPassphrase123!" -- npm start
 ```
 
 What happens:
@@ -331,7 +482,7 @@ What happens:
 Simple test:
 
 ```sh
-./bin/obv run -e development -k "MySecretPassphrase123!" -- printenv SECRET
+obv run -e development -k "MySecretPassphrase123!" -- printenv SECRET
 ```
 
 ## Full Local Example
@@ -341,9 +492,7 @@ From the repository root, with the backend running:
 ```sh
 export OBV_API_URL=http://localhost:8080
 
-cd cli
-go build -o ../bin/obv .
-cd ..
+./install.sh
 
 curl -X POST "$OBV_API_URL/api/v1/auth/register" \
   -H "Content-Type: application/json" \
@@ -354,20 +503,20 @@ TOKEN="$(curl -s -X POST "$OBV_API_URL/api/v1/auth/login" \
   -d '{"email":"you@example.com","password":"securepassword","token_name":"local-cli"}' \
   | sed -E 's/.*"token":"([^"]+)".*/\1/')"
 
-./bin/obv login --token "$TOKEN"
+obv login --token "$TOKEN"
 
 curl -X POST "$OBV_API_URL/api/v1/projects" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"My App","slug":"my-app"}'
 
-./bin/obv init -p my-app
+obv init -p my-app
 printf 'DATABASE_URL=postgres://localhost\nSECRET=local-secret\n' > .env
 
-./bin/obv push -k "MySecretPassphrase123!" -e development
-./bin/obv env ls
-./bin/obv pull -k "MySecretPassphrase123!" -e development
-./bin/obv run -e development -k "MySecretPassphrase123!" -- printenv SECRET
+obv push -k "MySecretPassphrase123!" -e development
+obv env ls
+obv pull -k "MySecretPassphrase123!" -e development
+obv run -e development -k "MySecretPassphrase123!" -- printenv SECRET
 ```
 
 ## Deploy On Your Own Server
@@ -621,7 +770,7 @@ curl -X POST "$OBV_API_URL/api/v1/projects" \
 Then link the local folder:
 
 ```sh
-./bin/obv init -p my-app
+obv init -p my-app
 ```
 
 ### `decrypt failed; .env was not modified`
