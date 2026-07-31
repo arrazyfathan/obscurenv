@@ -129,6 +129,8 @@ DATABASE_URL="postgres://obv:obv@localhost:5432/obv?sslmode=disable"
 ADDR=":8080"
 ```
 
+On Vercel, the platform provides `PORT` automatically. Obscurenv uses `ADDR` when set, otherwise it listens on `PORT`, otherwise it falls back to `:8080`.
+
 For Docker Compose, these are already configured in `docker-compose.yml`:
 
 ```text
@@ -403,6 +405,53 @@ export OBV_API_URL=https://obv.example.com
 ```
 
 Then users can register, login, create projects, and sync encrypted environments against your self-hosted instance.
+
+## Deploy Backend To Vercel
+
+Vercel can run the Go backend, but it will not run the PostgreSQL service from `docker-compose.yml`. Use an external PostgreSQL database such as Supabase, Neon, RDS, or another Postgres server you operate.
+
+Recommended Vercel setup:
+
+```text
+Vercel project root: backend
+Framework preset: Other
+Build command: default
+Output directory: default
+Install command: default
+```
+
+Set this Vercel environment variable:
+
+```text
+DATABASE_URL=postgres://user:password@host:5432/obv?sslmode=require
+```
+
+Do not set `ADDR` on Vercel unless you have a specific reason. Vercel provides `PORT`, and the backend will listen on it automatically.
+
+Deploy flow:
+
+1. Push this repository to GitHub, GitLab, or Bitbucket.
+2. Create a new Vercel project from the repository.
+3. Set the root directory to `backend`.
+4. Add `DATABASE_URL` in Vercel Project Settings.
+5. Deploy.
+6. Copy the production deployment URL.
+
+Point the CLI at the deployed backend:
+
+```sh
+export OBV_API_URL=https://your-obscurenv-backend.vercel.app
+```
+
+Smoke test the deployed API:
+
+```sh
+curl -X POST "$OBV_API_URL/api/v1/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"securepassword"}'
+```
+
+For serverless-style deployments, prefer a pooled PostgreSQL connection string when your database provider offers one. Vercel can scale multiple instances, and each instance may open database connections.
 
 ## API Reference
 

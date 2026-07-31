@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/obscurenv/obscurenv/backend/db"
@@ -12,7 +13,7 @@ import (
 
 func main() {
 	databaseURL := getenv("DATABASE_URL", "postgres://obv:obv@localhost:5432/obv?sslmode=disable")
-	addr := getenv("ADDR", ":8080")
+	addr := listenAddr()
 
 	database, err := db.Open(databaseURL)
 	if err != nil {
@@ -49,4 +50,15 @@ func getenv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func listenAddr() string {
+	if addr := os.Getenv("ADDR"); addr != "" {
+		return addr
+	}
+	port := getenv("PORT", "8080")
+	if strings.HasPrefix(port, ":") {
+		return port
+	}
+	return ":" + port
 }
