@@ -23,7 +23,11 @@ var runCmd = &cobra.Command{
 			return err
 		}
 		environment := resolveEnvironment(runEnv, config)
-		plaintext, err := pullEnvironment(environment, runKey, false)
+		passphrase, err := promptSecret("Encryption passphrase", runKey)
+		if err != nil {
+			return err
+		}
+		plaintext, err := pullEnvironment(environment, passphrase, false)
 		if err != nil {
 			return err
 		}

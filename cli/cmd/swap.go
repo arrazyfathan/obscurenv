@@ -19,15 +19,19 @@ var swapCmd = &cobra.Command{
 			return err
 		}
 		current := config.ActiveEnvironment
+		passphrase, err := promptSecret("Encryption passphrase", swapKey)
+		if err != nil {
+			return err
+		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Switching environment to %q...\n", target)
-		if _, err := pushEnvironment(current, swapKey); err != nil {
+		if _, err := pushEnvironment(current, passphrase); err != nil {
 			return fmt.Errorf("push current environment %q: %w", current, err)
 		}
 		config.ActiveEnvironment = target
 		if err := saveProjectConfig(*config); err != nil {
 			return err
 		}
-		if _, err := pullEnvironment(target, swapKey, true); err != nil {
+		if _, err := pullEnvironment(target, passphrase, true); err != nil {
 			config.ActiveEnvironment = current
 			_ = saveProjectConfig(*config)
 			return fmt.Errorf("pull target environment %q: %w", target, err)

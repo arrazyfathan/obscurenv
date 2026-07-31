@@ -20,7 +20,11 @@ var pullCmd = &cobra.Command{
 			return err
 		}
 		environment := resolveEnvironment(pullEnv, config)
-		if _, err := pullEnvironment(environment, pullKey, true); err != nil {
+		passphrase, err := promptSecret("Encryption passphrase", pullKey)
+		if err != nil {
+			return err
+		}
+		if _, err := pullEnvironment(environment, passphrase, true); err != nil {
 			return err
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Pulled %q into .env.\n", environment)
@@ -35,7 +39,7 @@ func init() {
 
 func pullEnvironment(environment, passphrase string, writeFile bool) ([]byte, error) {
 	if passphrase == "" {
-		return nil, fmt.Errorf("--key is required")
+		return nil, fmt.Errorf("encryption passphrase is required")
 	}
 	config, err := loadProjectConfig()
 	if err != nil {

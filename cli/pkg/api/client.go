@@ -23,6 +23,31 @@ type PushRequest struct {
 	Checksum         string `json:"checksum"`
 }
 
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type LoginRequest struct {
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	TokenName string `json:"token_name"`
+}
+
+type LoginResponse struct {
+	Token string `json:"token"`
+}
+
+type CreateProjectRequest struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+type CreateProjectResponse struct {
+	ID   string `json:"id"`
+	Slug string `json:"slug"`
+}
+
 type PushResponse struct {
 	Message string `json:"message"`
 	Version int    `json:"version"`
@@ -48,6 +73,26 @@ func New(baseURL, token string) *Client {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+func (c *Client) Register(req RegisterRequest) error {
+	return c.do(http.MethodPost, "/api/v1/auth/register", req, nil)
+}
+
+func (c *Client) Login(req LoginRequest) (*LoginResponse, error) {
+	var out LoginResponse
+	if err := c.do(http.MethodPost, "/api/v1/auth/login", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateProject(req CreateProjectRequest) (*CreateProjectResponse, error) {
+	var out CreateProjectResponse
+	if err := c.do(http.MethodPost, "/api/v1/projects", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (c *Client) Push(req PushRequest) (*PushResponse, error) {

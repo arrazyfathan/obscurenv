@@ -21,7 +21,8 @@ type ProjectConfig struct {
 }
 
 type Credentials struct {
-	Token string `json:"token"`
+	Token  string `json:"token"`
+	APIURL string `json:"api_url,omitempty"`
 }
 
 var rootCmd = &cobra.Command{
@@ -61,7 +62,11 @@ func loadClient() (*api.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return api.New(apiBaseURL(), credentials.Token), nil
+	baseURL := apiBaseURL()
+	if os.Getenv("OBV_API_URL") == "" && credentials.APIURL != "" {
+		baseURL = credentials.APIURL
+	}
+	return api.New(baseURL, credentials.Token), nil
 }
 
 func loadProjectConfig() (*ProjectConfig, error) {

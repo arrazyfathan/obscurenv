@@ -23,7 +23,11 @@ var pushCmd = &cobra.Command{
 			return err
 		}
 		environment := resolveEnvironment(pushEnv, config)
-		version, err := pushEnvironment(environment, pushKey)
+		passphrase, err := promptSecret("Encryption passphrase", pushKey)
+		if err != nil {
+			return err
+		}
+		version, err := pushEnvironment(environment, passphrase)
 		if err != nil {
 			return err
 		}
@@ -39,7 +43,7 @@ func init() {
 
 func pushEnvironment(environment, passphrase string) (int, error) {
 	if passphrase == "" {
-		return 0, fmt.Errorf("--key is required")
+		return 0, fmt.Errorf("encryption passphrase is required")
 	}
 	config, err := loadProjectConfig()
 	if err != nil {
