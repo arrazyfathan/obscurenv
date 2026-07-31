@@ -1,0 +1,9 @@
+.env
+.obv.json
+credentials.json
+bin/
+dist/
+tmp/
+coverage.out
+.gocache/
+.gomodcache/
