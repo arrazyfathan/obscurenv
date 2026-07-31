@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"net/http"
 	"strconv"
 	"time"
@@ -30,6 +32,11 @@ func (h *EnvHandler) Push(c *gin.Context) {
 	var req pushRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "invalid push request")
+		return
+	}
+	sum := sha256.Sum256([]byte(req.EncryptedPayload))
+	if req.Checksum != hex.EncodeToString(sum[:]) {
+		badRequest(c, "checksum does not match encrypted payload")
 		return
 	}
 	userID := middleware.UserID(c)
