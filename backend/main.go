@@ -26,6 +26,7 @@ func main() {
 	}
 
 	router := gin.Default()
+	registerHealthRoutes(router)
 	api := router.Group("/api/v1")
 	authHandler := handlers.NewAuthHandler(database)
 	api.POST("/auth/register", authHandler.Register)
@@ -43,6 +44,15 @@ func main() {
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("run server: %v", err)
 	}
+}
+
+func registerHealthRoutes(router *gin.Engine) {
+	router.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{"name": "obscurenv", "status": "ok"})
+	})
+	router.GET("/healthz", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 }
 
 func getenv(key, fallback string) string {
