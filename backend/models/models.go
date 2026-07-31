@@ -15,4 +15,5 @@ type EnvVersion struct {
 	Version          int    `json:"version"`
 	EncryptedPayload string `json:"encrypted_payload"`
 	Checksum         string `json:"checksum"`
+	CreatedAt        string `json:"created_at,omitempty"`
 }

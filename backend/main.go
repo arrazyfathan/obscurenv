@@ -36,10 +36,13 @@ func main() {
 	protected.Use(middleware.Auth(database))
 	projectHandler := handlers.NewProjectHandler(database)
 	envHandler := handlers.NewEnvHandler(database)
+	protected.GET("/projects", projectHandler.List)
+	protected.GET("/projects/:slug", projectHandler.Get)
 	protected.POST("/projects", projectHandler.Create)
 	protected.POST("/env/push", envHandler.Push)
 	protected.GET("/env/pull", envHandler.Pull)
 	protected.GET("/env/list", envHandler.List)
+	protected.GET("/env/versions", envHandler.Versions)
 
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("run server: %v", err)

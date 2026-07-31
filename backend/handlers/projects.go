@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/obscurenv/obscurenv/backend/middleware"
@@ -19,6 +20,23 @@ func NewProjectHandler(database *sql.DB) *ProjectHandler {
 type createProjectRequest struct {
 	Name string `json:"name" binding:"required"`
 	Slug string `json:"slug" binding:"required"`
+}
+
+type projectSummary struct {
+	ID               string  `json:"id"`
+	Name             string  `json:"name"`
+	Slug             string  `json:"slug"`
+	CreatedAt        string  `json:"created_at"`
+	EnvironmentCount int     `json:"environment_count"`
+	LatestVersion    *int    `json:"latest_version"`
+	LatestUpdatedAt  *string `json:"latest_updated_at"`
+}
+
+type environmentSummary struct {
+	Name          string `json:"name"`
+	LatestVersion int    `json:"latest_version"`
+	Checksum      string `json:"checksum"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 func (h *ProjectHandler) Create(c *gin.Context) {
@@ -38,4 +56,153 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"id": id, "slug": req.Slug})
+}
+
+func (h *ProjectHandler) List(c *gin.Context) {
+	rows, err := h.db.QueryContext(c.Request.Context(), `
+		SELECT
+			p.id,
+			p.name,
+			p.slug,
+			p.created_at,
+			COUNT(DISTINCT ev.environment_name) AS environment_count,
+			MAX(ev.version) AS latest_version,
+			MAX(ev.created_at) AS latest_updated_at
+		FROM projects p
+		LEFT JOIN env_versions ev ON ev.project_id = p.id
+		WHERE p.user_id = $1
+		GROUP BY p.id, p.name, p.slug, p.created_at
+		ORDER BY COALESCE(MAX(ev.created_at), p.created_at) DESC
+	`, middleware.UserID(c))
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to list projects")
+		return
+	}
+	defer rows.Close()
+
+	projects := make([]projectSummary, 0)
+	for rows.Next() {
+		project, err := scanProjectSummary(rows)
+		if err != nil {
+			errorJSON(c, http.StatusInternalServerError, "failed to read projects")
+			return
+		}
+		projects = append(projects, project)
+	}
+	if err := rows.Err(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to read projects")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"projects": projects})
+}
+
+func (h *ProjectHandler) Get(c *gin.Context) {
+	slug := c.Param("slug")
+
+	project, err := scanProjectSummary(h.db.QueryRowContext(c.Request.Context(), `
+		SELECT
+			p.id,
+			p.name,
+			p.slug,
+			p.created_at,
+			COUNT(DISTINCT ev.environment_name) AS environment_count,
+			MAX(ev.version) AS latest_version,
+			MAX(ev.created_at) AS latest_updated_at
+		FROM projects p
+		LEFT JOIN env_versions ev ON ev.project_id = p.id
+		WHERE p.user_id = $1 AND p.slug = $2
+		GROUP BY p.id, p.name, p.slug, p.created_at
+	`, middleware.UserID(c), slug))
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, "project not found")
+		return
+	}
+
+	rows, err := h.db.QueryContext(c.Request.Context(), `
+		SELECT environment_name, version, checksum, created_at
+		FROM (
+			SELECT
+				ev.environment_name,
+				ev.version,
+				ev.checksum,
+				ev.created_at,
+				ROW_NUMBER() OVER (
+					PARTITION BY ev.environment_name
+					ORDER BY ev.version DESC
+				) AS row_number
+			FROM env_versions ev
+			JOIN projects p ON p.id = ev.project_id
+			WHERE p.user_id = $1 AND p.slug = $2
+		) latest
+		WHERE row_number = 1
+		ORDER BY environment_name
+	`, middleware.UserID(c), slug)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to list environments")
+		return
+	}
+	defer rows.Close()
+
+	environments := make([]environmentSummary, 0)
+	for rows.Next() {
+		var environment environmentSummary
+		var updatedAt time.Time
+		if err := rows.Scan(&environment.Name, &environment.LatestVersion, &environment.Checksum, &updatedAt); err != nil {
+			errorJSON(c, http.StatusInternalServerError, "failed to read environments")
+			return
+		}
+		environment.UpdatedAt = formatTime(updatedAt)
+		environments = append(environments, environment)
+	}
+	if err := rows.Err(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to read environments")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":                project.ID,
+		"name":              project.Name,
+		"slug":              project.Slug,
+		"created_at":        project.CreatedAt,
+		"environment_count": project.EnvironmentCount,
+		"latest_version":    project.LatestVersion,
+		"latest_updated_at": project.LatestUpdatedAt,
+		"environments":      environments,
+	})
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanProjectSummary(row rowScanner) (projectSummary, error) {
+	var project projectSummary
+	var createdAt time.Time
+	var latestVersion sql.NullInt64
+	var latestUpdatedAt sql.NullTime
+	err := row.Scan(
+		&project.ID,
+		&project.Name,
+		&project.Slug,
+		&createdAt,
+		&project.EnvironmentCount,
+		&latestVersion,
+		&latestUpdatedAt,
+	)
+	if err != nil {
+		return project, err
+	}
+	project.CreatedAt = formatTime(createdAt)
+	if latestVersion.Valid {
+		value := int(latestVersion.Int64)
+		project.LatestVersion = &value
+	}
+	if latestUpdatedAt.Valid {
+		value := formatTime(latestUpdatedAt.Time)
+		project.LatestUpdatedAt = &value
+	}
+	return project, err
+}
+
+func formatTime(value time.Time) string {
+	return value.Format(time.RFC3339)
 }

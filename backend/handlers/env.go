@@ -3,6 +3,8 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/obscurenv/obscurenv/backend/middleware"
@@ -81,16 +83,28 @@ func (h *EnvHandler) Pull(c *gin.Context) {
 		badRequest(c, "project and environment are required")
 		return
 	}
+	versionParam := c.Query("version")
 
 	var out models.EnvVersion
-	err := h.db.QueryRowContext(c.Request.Context(), `
+	query := `
 		SELECT p.slug, ev.environment_name, ev.version, ev.encrypted_payload, ev.checksum
 		FROM env_versions ev
 		JOIN projects p ON p.id = ev.project_id
 		WHERE p.user_id = $1 AND p.slug = $2 AND ev.environment_name = $3
-		ORDER BY ev.version DESC
-		LIMIT 1
-	`, middleware.UserID(c), projectSlug, environment).Scan(
+	`
+	args := []any{middleware.UserID(c), projectSlug, environment}
+	if versionParam != "" {
+		version, err := strconv.Atoi(versionParam)
+		if err != nil || version < 1 {
+			badRequest(c, "version must be a positive integer")
+			return
+		}
+		query += " AND ev.version = $4"
+		args = append(args, version)
+	}
+	query += " ORDER BY ev.version DESC LIMIT 1"
+
+	err := h.db.QueryRowContext(c.Request.Context(), query, args...).Scan(
 		&out.ProjectSlug,
 		&out.Environment,
 		&out.Version,
@@ -137,4 +151,51 @@ func (h *EnvHandler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"environments": environments})
+}
+
+type envVersionMeta struct {
+	ProjectSlug string `json:"project_slug"`
+	Environment string `json:"environment"`
+	Version     int    `json:"version"`
+	Checksum    string `json:"checksum"`
+	CreatedAt   string `json:"created_at"`
+}
+
+func (h *EnvHandler) Versions(c *gin.Context) {
+	projectSlug := c.Query("project")
+	environment := c.Query("environment")
+	if projectSlug == "" || environment == "" {
+		badRequest(c, "project and environment are required")
+		return
+	}
+
+	rows, err := h.db.QueryContext(c.Request.Context(), `
+		SELECT p.slug, ev.environment_name, ev.version, ev.checksum, ev.created_at
+		FROM env_versions ev
+		JOIN projects p ON p.id = ev.project_id
+		WHERE p.user_id = $1 AND p.slug = $2 AND ev.environment_name = $3
+		ORDER BY ev.version DESC
+	`, middleware.UserID(c), projectSlug, environment)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to list versions")
+		return
+	}
+	defer rows.Close()
+
+	versions := make([]envVersionMeta, 0)
+	for rows.Next() {
+		var item envVersionMeta
+		var createdAt time.Time
+		if err := rows.Scan(&item.ProjectSlug, &item.Environment, &item.Version, &item.Checksum, &createdAt); err != nil {
+			errorJSON(c, http.StatusInternalServerError, "failed to read versions")
+			return
+		}
+		item.CreatedAt = createdAt.Format(time.RFC3339)
+		versions = append(versions, item)
+	}
+	if err := rows.Err(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to read versions")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"versions": versions})
 }
