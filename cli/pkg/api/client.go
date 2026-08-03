@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -48,6 +49,29 @@ type CreateProjectResponse struct {
 	Slug string `json:"slug"`
 }
 
+type ProjectResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("api error %d: %s", e.StatusCode, e.Message)
+	}
+	return fmt.Sprintf("api error %d", e.StatusCode)
+}
+
+func IsStatus(err error, statusCode int) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == statusCode
+}
+
 type PushResponse struct {
 	Message string `json:"message"`
 	Version int    `json:"version"`
@@ -90,6 +114,15 @@ func (c *Client) Login(req LoginRequest) (*LoginResponse, error) {
 func (c *Client) CreateProject(req CreateProjectRequest) (*CreateProjectResponse, error) {
 	var out CreateProjectResponse
 	if err := c.do(http.MethodPost, "/api/v1/projects", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetProject(slug string) (*ProjectResponse, error) {
+	path := "/api/v1/projects/" + url.PathEscape(slug)
+	var out ProjectResponse
+	if err := c.do(http.MethodGet, path, nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -155,10 +188,7 @@ func (c *Client) do(method, path string, body any, out any) error {
 			Error string `json:"error"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&errBody)
-		if errBody.Error != "" {
-			return fmt.Errorf("api error %d: %s", resp.StatusCode, errBody.Error)
-		}
-		return fmt.Errorf("api error %d", resp.StatusCode)
+		return &APIError{StatusCode: resp.StatusCode, Message: errBody.Error}
 	}
 	if out == nil {
 		return nil

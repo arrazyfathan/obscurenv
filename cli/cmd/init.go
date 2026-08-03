@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/obscurenv/obscurenv/cli/pkg/api"
@@ -42,15 +43,16 @@ var initCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			resp, err := client.CreateProject(api.CreateProjectRequest{
-				Name: name,
-				Slug: project,
-			})
+			resp, created, err := createOrLinkProject(client, api.CreateProjectRequest{Name: name, Slug: project})
 			if err != nil {
 				return fmt.Errorf("create project: %w", err)
 			}
 			project = resp.Slug
-			fmt.Fprintf(cmd.OutOrStdout(), "Created remote project %q.\n", project)
+			if created {
+				fmt.Fprintf(cmd.OutOrStdout(), "Created remote project %q.\n", project)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Remote project %q already exists; linked local config.\n", project)
+			}
 		}
 		config := ProjectConfig{
 			ProjectSlug:       initProject,
@@ -63,6 +65,24 @@ var initCmd = &cobra.Command{
 		fmt.Fprintf(cmd.OutOrStdout(), "Created %s for project %q using %q.\n", projectConfigFile, project, environment)
 		return nil
 	},
+}
+
+func createOrLinkProject(client *api.Client, req api.CreateProjectRequest) (*api.CreateProjectResponse, bool, error) {
+	resp, err := client.CreateProject(req)
+	if err == nil {
+		return resp, true, nil
+	}
+	if !api.IsStatus(err, http.StatusConflict) {
+		return nil, false, err
+	}
+	project, getErr := client.GetProject(req.Slug)
+	if getErr != nil {
+		return nil, false, fmt.Errorf("%w; failed to verify existing project: %v", err, getErr)
+	}
+	return &api.CreateProjectResponse{
+		ID:   project.ID,
+		Slug: project.Slug,
+	}, false, nil
 }
 
 func init() {

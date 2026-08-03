@@ -31,6 +31,8 @@ var rootCmd = &cobra.Command{
 	Version: normalizeVersion(version),
 }
 
+var newAPIClient = api.New
+
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -67,7 +69,7 @@ func loadClient() (*api.Client, error) {
 	if os.Getenv("OBE_API_URL") == "" && credentials.APIURL != "" {
 		baseURL = credentials.APIURL
 	}
-	return api.New(baseURL, credentials.Token), nil
+	return newAPIClient(baseURL, credentials.Token), nil
 }
 
 func loadProjectConfig() (*ProjectConfig, error) {
