@@ -92,12 +92,16 @@ DATABASE_URL=postgres://obv:obv@localhost:5432/obv?sslmode=disable
 ADDR=:8080
 PORT=
 OBE_API_URL=http://localhost:8080
+OBE_WEBAUTHN_RP_ID=localhost
+OBE_WEBAUTHN_ORIGINS=http://localhost:3000
+OBE_WEBAUTHN_RP_NAME=Obscurenv
 ```
 
 Precedence:
 
 - Backend listens on `ADDR`, then `PORT`, then `:8080`.
 - CLI uses `OBE_API_URL`; if unset, it uses the API URL saved by `obe login`; otherwise it falls back to `https://localhost:8080`.
+- Passkey verification uses `OBE_WEBAUTHN_RP_ID` and `OBE_WEBAUTHN_ORIGINS`; set these to the web dashboard domain and origin in production.
 
 Local files:
 
@@ -227,10 +231,21 @@ Endpoints:
 ```text
 POST /api/v1/auth/register
 POST /api/v1/auth/login
+POST /api/v1/auth/passkey/login/options
+POST /api/v1/auth/passkey/login/finish
 POST /api/v1/projects
 POST /api/v1/env/push
 GET  /api/v1/env/pull?project=my-app&environment=development
 GET  /api/v1/env/list?project=my-app
+```
+
+Additional protected passkey endpoints:
+
+```text
+GET    /api/v1/auth/passkeys
+DELETE /api/v1/auth/passkeys/:id
+POST   /api/v1/auth/passkey/register/options
+POST   /api/v1/auth/passkey/register/finish
 ```
 
 Use the CLI for normal operation. API calls should send only encrypted payloads, never plaintext env values or passphrases.
@@ -242,6 +257,7 @@ Use the CLI for normal operation. API calls should send only encrypted payloads,
 - Encryption uses Argon2id and AES-256-GCM.
 - Backend stores encrypted payloads as opaque text.
 - API tokens are hashed in the database.
+- Passkeys are used for authentication only; env payload decryption still requires the local encryption passphrase.
 - Decrypt failure exits without modifying the existing `.env`.
 - `obe run` injects variables through process environment and does not write decrypted content to disk.
 

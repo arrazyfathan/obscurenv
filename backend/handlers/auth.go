@@ -3,18 +3,27 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
 )
 
 type AuthHandler struct {
-	db *sql.DB
+	db      *sql.DB
+	passkey *webauthn.WebAuthn
+	rpID    string
 }
 
 func NewAuthHandler(database *sql.DB) *AuthHandler {
-	return &AuthHandler{db: database}
+	passkey, rpID, err := newWebAuthnProvider()
+	if err != nil {
+		passkey = nil
+	}
+	return &AuthHandler{db: database, passkey: passkey, rpID: rpID}
 }
 
 type registerRequest struct {
@@ -122,4 +131,42 @@ func nullIfEmpty(value string) any {
 		return nil
 	}
 	return value
+}
+
+func newWebAuthnProvider() (*webauthn.WebAuthn, string, error) {
+	rpID := strings.TrimSpace(os.Getenv("OBE_WEBAUTHN_RP_ID"))
+	if rpID == "" {
+		rpID = "localhost"
+	}
+	origins := splitCSV(os.Getenv("OBE_WEBAUTHN_ORIGINS"))
+	if len(origins) == 0 {
+		origins = []string{"http://localhost:3000", "http://localhost:3001"}
+	}
+	displayName := strings.TrimSpace(os.Getenv("OBE_WEBAUTHN_RP_NAME"))
+	if displayName == "" {
+		displayName = "Obscurenv"
+	}
+	provider, err := webauthn.New(&webauthn.Config{
+		RPID:                  rpID,
+		RPDisplayName:         displayName,
+		RPOrigins:             origins,
+		AttestationPreference: protocol.PreferNoAttestation,
+		AuthenticatorSelection: protocol.AuthenticatorSelection{
+			ResidentKey:      protocol.ResidentKeyRequirementPreferred,
+			UserVerification: protocol.VerificationPreferred,
+		},
+	})
+	return provider, rpID, err
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

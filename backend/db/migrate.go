@@ -30,6 +30,37 @@ CREATE TABLE IF NOT EXISTS api_tokens (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS webauthn_users (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    rp_id VARCHAR(512) NOT NULL,
+    user_handle BYTEA NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, rp_id),
+    UNIQUE (rp_id, user_handle)
+);
+
+CREATE TABLE IF NOT EXISTS passkeys (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    rp_id VARCHAR(512) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    credential_id BYTEA NOT NULL,
+    credential JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE (rp_id, credential_id)
+);
+
+CREATE TABLE IF NOT EXISTS webauthn_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    kind VARCHAR(32) NOT NULL,
+    label VARCHAR(100),
+    session_json JSONB NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
