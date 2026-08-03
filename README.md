@@ -54,8 +54,8 @@ Android/Gradle projects can use `local.properties` instead:
 
 ```sh
 printf 'sdk.dir=/Users/you/Library/Android/sdk\nAPI_KEY=local-secret\n' > local.properties
-obe init --file local.properties
-obe push
+obe init
+obe push local.properties
 ```
 
 `obe push`, `obe pull`, `obe use`, and `obe run` prompt for the encryption passphrase when `-k` is omitted. Passphrases are never stored.
@@ -83,6 +83,7 @@ obe login --token "$TOKEN" --api-url https://obe.example.com
 obe init --project my-app --env development --create
 obe init --project android-app --env development --file local.properties
 obe push --env development --key "$OBE_PASSPHRASE"
+obe push local.properties --env development --key "$OBE_PASSPHRASE"
 obe push --file local.properties --env development --key "$OBE_PASSPHRASE"
 obe run --env staging --key "$OBE_PASSPHRASE" -- npm start
 ```
@@ -122,11 +123,13 @@ Local files:
 
 Managed file selection:
 
+- `obe push [file]` accepts an optional relative file argument, such as `obe push local.properties`.
 - `--file` overrides all other file selection.
-- `.obe.json` `env_file` is used when present.
-- Otherwise, the CLI auto-detects `.env` or `local.properties`.
+- For `obe push`, a positional file argument is used next, then the CLI auto-detects an existing `.env` or `local.properties`, then falls back to `.obe.json` `env_file`.
+- For `obe pull` and `obe use`, `.obe.json` `env_file` is used when present; otherwise, the CLI auto-detects `.env` or `local.properties`.
 - If both `.env` and `local.properties` exist, pass `--file` to choose one.
 - `obe pull` defaults to `.env` when no local managed file exists yet.
+- Successful `obe push`, `obe pull`, and `obe use` operations remember the resolved file in `.obe.json` as `env_file`.
 
 Recommended `.gitignore` for projects using Obscurenv:
 
