@@ -81,5 +81,8 @@ func pushEnvironment(environment, passphrase, file string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if err := rememberManagedFile(config, file); err != nil {
+		return 0, err
+	}
 	return resp.Version, nil
 }

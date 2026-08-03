@@ -106,6 +106,18 @@ func saveProjectConfig(config ProjectConfig) error {
 	return os.WriteFile(projectConfigFile, data, 0600)
 }
 
+func rememberManagedFile(config *ProjectConfig, file string) error {
+	file, err := validateManagedFile(file)
+	if err != nil {
+		return err
+	}
+	if config.EnvFile == file {
+		return nil
+	}
+	config.EnvFile = file
+	return saveProjectConfig(*config)
+}
+
 func credentialsPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {

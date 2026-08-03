@@ -78,5 +78,8 @@ func pullEnvironment(environment, passphrase, file string, writeFile bool) ([]by
 		_ = os.Remove(tmp)
 		return nil, err
 	}
+	if err := rememberManagedFile(config, file); err != nil {
+		return nil, err
+	}
 	return plaintext, nil
 }

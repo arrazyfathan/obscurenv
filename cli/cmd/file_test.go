@@ -150,6 +150,13 @@ func TestPushAutoDetectsLocalProperties(t *testing.T) {
 	if gotPlaintext != "sdk.dir=/opt/android\nAPI_KEY=android-secret\n" {
 		t.Fatalf("pushed plaintext = %q, want local.properties content", gotPlaintext)
 	}
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.EnvFile != gradleEnvFile {
+		t.Fatalf("EnvFile = %q, want %q", config.EnvFile, gradleEnvFile)
+	}
 }
 
 func TestPullWritesResolvedLocalProperties(t *testing.T) {
@@ -176,6 +183,32 @@ func TestPullWritesResolvedLocalProperties(t *testing.T) {
 	}
 	if string(data) != "sdk.dir=/opt/android\n" {
 		t.Fatalf("local.properties = %q, want pulled content", data)
+	}
+}
+
+func TestPullRemembersExplicitLocalProperties(t *testing.T) {
+	withTempWorkingDir(t)
+	setupFileCommandTest(t, ProjectConfig{
+		ProjectSlug:       "obsecurenv",
+		ActiveEnvironment: "development",
+	})
+
+	payload, err := obecrypto.EncryptWithPassphrase([]byte("sdk.dir=/opt/android\n"), "passphrase")
+	if err != nil {
+		t.Fatalf("EncryptWithPassphrase: %v", err)
+	}
+	restore := stubAPIClient(pullPayloadHandler(t, payload))
+	t.Cleanup(restore)
+
+	if _, err := pullEnvironment("development", "passphrase", gradleEnvFile, true); err != nil {
+		t.Fatalf("pullEnvironment: %v", err)
+	}
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.EnvFile != gradleEnvFile {
+		t.Fatalf("EnvFile = %q, want %q", config.EnvFile, gradleEnvFile)
 	}
 }
 
