@@ -45,9 +45,6 @@ func TestProjectConfigFileUsesOBEName(t *testing.T) {
 	if _, err := os.Stat(".obe.json"); err != nil {
 		t.Fatalf("expected .obe.json to exist: %v", err)
 	}
-	if _, err := os.Stat(".obv.json"); !os.IsNotExist(err) {
-		t.Fatalf("expected .obv.json not to exist, got err=%v", err)
-	}
 }
 
 func TestCredentialsPathUsesOBEDirectory(t *testing.T) {
@@ -67,16 +64,13 @@ func TestCredentialsPathUsesOBEDirectory(t *testing.T) {
 
 func TestAPIBaseURLUsesOBEEnvVar(t *testing.T) {
 	t.Setenv("OBE_API_URL", "http://obe.example.test")
-	t.Setenv("OBV_API_URL", "http://obv.example.test")
 
 	if got := apiBaseURL(); got != "http://obe.example.test" {
 		t.Fatalf("apiBaseURL = %q, want OBE_API_URL", got)
 	}
 }
 
-func TestAPIBaseURLIgnoresOBVEnvVar(t *testing.T) {
-	t.Setenv("OBV_API_URL", "http://obv.example.test")
-
+func TestAPIBaseURLUsesDefaultWithoutOBEEnvVar(t *testing.T) {
 	if got := apiBaseURL(); got != defaultAPIURL {
 		t.Fatalf("apiBaseURL = %q, want default API URL", got)
 	}

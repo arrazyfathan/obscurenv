@@ -56,7 +56,7 @@ func newAPIToken() (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	token := "obv_tok_" + base64.RawURLEncoding.EncodeToString(raw)
+	token := "obe_tok_" + base64.RawURLEncoding.EncodeToString(raw)
 	return token, tokenHash(token), nil
 }
 

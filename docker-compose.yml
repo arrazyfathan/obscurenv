@@ -2,9 +2,9 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: obv
-      POSTGRES_PASSWORD: obv
-      POSTGRES_DB: obv
+      POSTGRES_USER: obe
+      POSTGRES_PASSWORD: obe
+      POSTGRES_DB: obe
     ports:
       - "5432:5432"
     volumes:
@@ -15,7 +15,7 @@ services:
       context: ./backend
     environment:
       ADDR: :8080
-      DATABASE_URL: postgres://obv:obv@postgres:5432/obv?sslmode=disable
+      DATABASE_URL: postgres://obe:obe@postgres:5432/obe?sslmode=disable
     ports:
       - "8080:8080"
     depends_on:
@@ -23,4 +23,3 @@ services:
 
 volumes:
   postgres_data:
-

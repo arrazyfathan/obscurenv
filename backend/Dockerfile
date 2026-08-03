@@ -3,12 +3,11 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/obv-backend .
+RUN CGO_ENABLED=0 go build -o /out/obe-backend .
 
 FROM alpine:3.22
-RUN adduser -D -H obv
-USER obv
-COPY --from=build /out/obv-backend /usr/local/bin/obv-backend
+RUN adduser -D -H obe
+USER obe
+COPY --from=build /out/obe-backend /usr/local/bin/obe-backend
 EXPOSE 8080
-ENTRYPOINT ["obv-backend"]
-
+ENTRYPOINT ["obe-backend"]

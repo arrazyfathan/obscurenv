@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/obscurenv/obscurenv/cli/pkg/api"
-	obvcrypto "github.com/obscurenv/obscurenv/cli/pkg/crypto"
+	obecrypto "github.com/obscurenv/obscurenv/cli/pkg/crypto"
 )
 
 func TestUsePullsTargetWithoutPushingCurrent(t *testing.T) {
@@ -196,7 +196,7 @@ func setupUseCommandTest(t *testing.T, pushCurrent bool) {
 func useHandler(t *testing.T, sawPush, sawPull *bool) http.Handler {
 	t.Helper()
 
-	targetPayload, err := obvcrypto.EncryptWithPassphrase([]byte("TARGET=value\n"), "passphrase")
+	targetPayload, err := obecrypto.EncryptWithPassphrase([]byte("TARGET=value\n"), "passphrase")
 	if err != nil {
 		t.Fatalf("EncryptWithPassphrase: %v", err)
 	}

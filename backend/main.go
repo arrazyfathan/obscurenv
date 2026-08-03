@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	databaseURL := getenv("DATABASE_URL", "postgres://obv:obv@localhost:5432/obv?sslmode=disable")
+	databaseURL := getenv("DATABASE_URL", "postgres://obe:obe@localhost:5432/obe?sslmode=disable")
 	addr := listenAddr()
 
 	database, err := db.Open(databaseURL)

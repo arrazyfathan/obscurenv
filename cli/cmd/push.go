@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/obscurenv/obscurenv/cli/pkg/api"
-	obvcrypto "github.com/obscurenv/obscurenv/cli/pkg/crypto"
+	obecrypto "github.com/obscurenv/obscurenv/cli/pkg/crypto"
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +53,7 @@ func pushEnvironment(environment, passphrase string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("read .env: %w", err)
 	}
-	payload, err := obvcrypto.EncryptWithPassphrase(plaintext, passphrase)
+	payload, err := obecrypto.EncryptWithPassphrase(plaintext, passphrase)
 	if err != nil {
 		return 0, err
 	}

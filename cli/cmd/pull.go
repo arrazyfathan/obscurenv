@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	obvcrypto "github.com/obscurenv/obscurenv/cli/pkg/crypto"
+	obecrypto "github.com/obscurenv/obscurenv/cli/pkg/crypto"
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +53,7 @@ func pullEnvironment(environment, passphrase string, writeFile bool) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	plaintext, err := obvcrypto.DecryptWithPassphrase(resp.EncryptedPayload, passphrase)
+	plaintext, err := obecrypto.DecryptWithPassphrase(resp.EncryptedPayload, passphrase)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt failed; .env was not modified: %w", err)
 	}

@@ -4,7 +4,7 @@ BIN_DIR ?= bin
 DIST_DIR ?= dist
 INSTALL_DIR ?= $(HOME)/.local/bin
 BACKEND_ADDR ?= :8080
-DATABASE_URL ?= postgres://obv:obv@localhost:5432/obv?sslmode=disable
+DATABASE_URL ?= postgres://obe:obe@localhost:5432/obe?sslmode=disable
 GOCACHE ?= $(CURDIR)/.gocache
 GOMODCACHE ?= $(CURDIR)/.gomodcache
 VERSION ?= $(shell cat VERSION)

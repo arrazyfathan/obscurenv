@@ -88,7 +88,7 @@ cp .env.example .env
 Runtime variables:
 
 ```sh
-DATABASE_URL=postgres://obv:obv@localhost:5432/obv?sslmode=disable
+DATABASE_URL=postgres://obe:obe@localhost:5432/obe?sslmode=disable
 ADDR=:8080
 PORT=
 OBE_API_URL=http://localhost:8080
@@ -148,7 +148,7 @@ Override local settings:
 ```sh
 INSTALL_DIR="$HOME/bin" make install
 BACKEND_ADDR=:9090 make backend
-DATABASE_URL="postgres://user:password@localhost:5432/obv?sslmode=disable" make backend
+DATABASE_URL="postgres://user:password@localhost:5432/obe?sslmode=disable" make backend
 ```
 
 ## Versioning
@@ -190,11 +190,11 @@ dist/obe_0.2.1_darwin_arm64.tar.gz
 Docker:
 
 ```sh
-docker build -t obv-backend ./backend
+docker build -t obe-backend ./backend
 docker run -p 8080:8080 \
   -e ADDR=:8080 \
-  -e DATABASE_URL="postgres://user:password@db-host:5432/obv?sslmode=require" \
-  obv-backend
+  -e DATABASE_URL="postgres://user:password@db-host:5432/obe?sslmode=require" \
+  obe-backend
 ```
 
 Vercel:

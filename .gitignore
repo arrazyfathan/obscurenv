@@ -1,5 +1,5 @@
 .env
-.obv.json
+.obe.json
 credentials.json
 bin/
 dist/
