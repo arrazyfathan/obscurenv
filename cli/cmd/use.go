@@ -8,10 +8,11 @@ import (
 
 var useKey string
 var usePushCurrent bool
+var useFile string
 
 var useCmd = &cobra.Command{
 	Use:   "use [environment]",
-	Short: "Switch active environment and pull its .env",
+	Short: "Switch active environment and pull its local env file",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		target := ""
@@ -47,6 +48,10 @@ func runUse(cmd *cobra.Command, target string) error {
 	if err != nil {
 		return err
 	}
+	file, err := resolveManagedFile(useFile, config, usePushCurrent)
+	if err != nil {
+		return err
+	}
 	current := config.ActiveEnvironment
 	if target == "" {
 		target, err = chooseRemoteEnvironment(cmd, config.ProjectSlug, current)
@@ -60,7 +65,7 @@ func runUse(cmd *cobra.Command, target string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Switching environment to %q...\n", target)
 	if usePushCurrent {
-		if _, err := pushEnvironment(current, passphrase); err != nil {
+		if _, err := pushEnvironment(current, passphrase, file); err != nil {
 			return fmt.Errorf("push current environment %q: %w", current, err)
 		}
 	}
@@ -68,12 +73,12 @@ func runUse(cmd *cobra.Command, target string) error {
 	if err := saveProjectConfig(*config); err != nil {
 		return err
 	}
-	if _, err := pullEnvironment(target, passphrase, true); err != nil {
+	if _, err := pullEnvironment(target, passphrase, file, true); err != nil {
 		config.ActiveEnvironment = current
 		_ = saveProjectConfig(*config)
 		return fmt.Errorf("pull target environment %q: %w", target, err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Local .env now uses %q.\n", target)
+	fmt.Fprintf(cmd.OutOrStdout(), "Local %s now uses %q.\n", file, target)
 	return nil
 }
 
@@ -128,5 +133,6 @@ func resolveEnvironmentChoice(value string, environments []string) (string, erro
 func init() {
 	useCmd.AddCommand(useListCmd)
 	useCmd.Flags().StringVarP(&useKey, "key", "k", "", "Encryption passphrase")
-	useCmd.Flags().BoolVar(&usePushCurrent, "push-current", false, "Push the current .env before switching")
+	useCmd.Flags().StringVar(&useFile, "file", "", "Managed local file path, such as .env or local.properties")
+	useCmd.Flags().BoolVar(&usePushCurrent, "push-current", false, "Push the current local env file before switching")
 }

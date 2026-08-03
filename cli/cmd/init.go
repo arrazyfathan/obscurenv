@@ -13,6 +13,7 @@ var initProject string
 var initProjectName string
 var initCreateProject bool
 var initEnvironment string
+var initFile string
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -54,9 +55,17 @@ var initCmd = &cobra.Command{
 				fmt.Fprintf(cmd.OutOrStdout(), "Remote project %q already exists; linked local config.\n", project)
 			}
 		}
+		envFile := ""
+		if initFile != "" {
+			envFile, err = validateManagedFile(initFile)
+			if err != nil {
+				return err
+			}
+		}
 		config := ProjectConfig{
 			ProjectSlug:       initProject,
 			ActiveEnvironment: environment,
+			EnvFile:           envFile,
 		}
 		config.ProjectSlug = project
 		if err := saveProjectConfig(config); err != nil {
@@ -89,6 +98,7 @@ func init() {
 	initCmd.Flags().StringVarP(&initProject, "project", "p", "", "Project slug")
 	initCmd.Flags().StringVar(&initProjectName, "name", "", "Project display name when creating it remotely")
 	initCmd.Flags().StringVarP(&initEnvironment, "env", "e", "", "Initial active environment")
+	initCmd.Flags().StringVar(&initFile, "file", "", "Managed local file path, such as .env or local.properties")
 	initCmd.Flags().BoolVar(&initCreateProject, "create", false, "Create the project on the server")
 }
 

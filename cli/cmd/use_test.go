@@ -69,6 +69,80 @@ func TestUsePushCurrentFlagPreservesOldPushBehavior(t *testing.T) {
 	}
 }
 
+func TestUsePushCurrentUsesConfiguredLocalProperties(t *testing.T) {
+	withTempWorkingDir(t)
+	setupUseCommandTest(t, true)
+
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	config.EnvFile = gradleEnvFile
+	if err := saveProjectConfig(*config); err != nil {
+		t.Fatalf("saveProjectConfig: %v", err)
+	}
+	if err := os.Remove(defaultEnvFile); err != nil {
+		t.Fatalf("remove .env: %v", err)
+	}
+	if err := os.WriteFile(gradleEnvFile, []byte("sdk.dir=/existing\n"), 0600); err != nil {
+		t.Fatalf("write local.properties: %v", err)
+	}
+
+	targetPayload, err := obecrypto.EncryptWithPassphrase([]byte("sdk.dir=/target\n"), "passphrase")
+	if err != nil {
+		t.Fatalf("EncryptWithPassphrase: %v", err)
+	}
+	var pushedPlaintext string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/env/push":
+			var req struct {
+				EncryptedPayload string `json:"encrypted_payload"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode push request: %v", err)
+			}
+			plaintext, err := obecrypto.DecryptWithPassphrase(req.EncryptedPayload, "passphrase")
+			if err != nil {
+				t.Fatalf("decrypt push payload: %v", err)
+			}
+			pushedPlaintext = string(plaintext)
+			_, _ = w.Write([]byte(`{"message":"Pushed successfully","version":2}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/env/pull":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"project_slug":      "obsecurenv",
+				"environment":       "production",
+				"version":           1,
+				"encrypted_payload": targetPayload,
+				"checksum":          "checksum",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	restore := stubAPIClient(handler)
+	t.Cleanup(restore)
+
+	if err := useCmd.RunE(useCmd, []string{"production"}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	if pushedPlaintext != "sdk.dir=/existing\n" {
+		t.Fatalf("pushed plaintext = %q, want local.properties content", pushedPlaintext)
+	}
+	data, err := os.ReadFile(gradleEnvFile)
+	if err != nil {
+		t.Fatalf("read local.properties: %v", err)
+	}
+	if string(data) != "sdk.dir=/target\n" {
+		t.Fatalf("local.properties = %q, want target payload", data)
+	}
+}
+
 func TestUseWithoutArgumentListsRemoteEnvironments(t *testing.T) {
 	withTempWorkingDir(t)
 	setupUseCommandTest(t, false)
@@ -185,12 +259,15 @@ func setupUseCommandTest(t *testing.T, pushCurrent bool) {
 
 	oldKey := useKey
 	oldPushCurrent := usePushCurrent
+	oldFile := useFile
 	t.Cleanup(func() {
 		useKey = oldKey
 		usePushCurrent = oldPushCurrent
+		useFile = oldFile
 	})
 	useKey = "passphrase"
 	usePushCurrent = pushCurrent
+	useFile = ""
 }
 
 func useHandler(t *testing.T, sawPush, sawPull *bool) http.Handler {

@@ -27,7 +27,7 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		plaintext, err := pullEnvironment(environment, passphrase, false)
+		plaintext, err := pullEnvironment(environment, passphrase, defaultEnvFile, false)
 		if err != nil {
 			return err
 		}

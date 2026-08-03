@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/obscurenv/obscurenv/cli/pkg/api"
 	"github.com/spf13/cobra"
@@ -13,11 +14,14 @@ import (
 const (
 	projectConfigFile = ".obe.json"
 	defaultAPIURL     = "https://localhost:8080"
+	defaultEnvFile    = ".env"
+	gradleEnvFile     = "local.properties"
 )
 
 type ProjectConfig struct {
 	ProjectSlug       string `json:"project_slug"`
 	ActiveEnvironment string `json:"active_environment"`
+	EnvFile           string `json:"env_file,omitempty"`
 }
 
 type Credentials struct {
@@ -156,4 +160,72 @@ func resolveEnvironment(flagValue string, config *ProjectConfig) string {
 		return config.ActiveEnvironment
 	}
 	return "development"
+}
+
+func resolveManagedFile(flagValue string, config *ProjectConfig, requireExisting bool) (string, error) {
+	if flagValue != "" {
+		return validateManagedFile(flagValue)
+	}
+	if config != nil && config.EnvFile != "" {
+		return validateManagedFile(config.EnvFile)
+	}
+
+	dotenvExists, err := fileExists(defaultEnvFile)
+	if err != nil {
+		return "", err
+	}
+	gradleExists, err := fileExists(gradleEnvFile)
+	if err != nil {
+		return "", err
+	}
+
+	switch {
+	case dotenvExists && gradleExists:
+		return "", fmt.Errorf("both %s and %s exist; choose one with --file", defaultEnvFile, gradleEnvFile)
+	case gradleExists:
+		return gradleEnvFile, nil
+	case dotenvExists:
+		return defaultEnvFile, nil
+	case requireExisting:
+		return "", fmt.Errorf("no managed file found; create %s or %s, or choose one with --file", defaultEnvFile, gradleEnvFile)
+	default:
+		return defaultEnvFile, nil
+	}
+}
+
+func validateManagedFile(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("file path is required")
+	}
+	if filepath.IsAbs(path) {
+		return "", fmt.Errorf("file path must be relative to the project directory")
+	}
+	if pathContainsParent(path) {
+		return "", fmt.Errorf("file path must not contain ..")
+	}
+	clean := filepath.Clean(path)
+	if clean == "." {
+		return "", fmt.Errorf("file path is required")
+	}
+	return clean, nil
+}
+
+func pathContainsParent(path string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func fileExists(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat %s: %w", path, err)
+	}
+	return !info.IsDir(), nil
 }

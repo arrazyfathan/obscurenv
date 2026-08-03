@@ -45,12 +45,14 @@ func TestInitLinksExistingRemoteProjectAfterCreateConflict(t *testing.T) {
 	oldProjectName := initProjectName
 	oldCreateProject := initCreateProject
 	oldEnvironment := initEnvironment
+	oldFile := initFile
 	oldNewAPIClient := newAPIClient
 	t.Cleanup(func() {
 		initProject = oldProject
 		initProjectName = oldProjectName
 		initCreateProject = oldCreateProject
 		initEnvironment = oldEnvironment
+		initFile = oldFile
 		newAPIClient = oldNewAPIClient
 		initCmd.SetOut(nil)
 	})
@@ -65,6 +67,7 @@ func TestInitLinksExistingRemoteProjectAfterCreateConflict(t *testing.T) {
 	initProjectName = "Obsecurenv"
 	initCreateProject = true
 	initEnvironment = "production"
+	initFile = ""
 	var out bytes.Buffer
 	initCmd.SetOut(&out)
 

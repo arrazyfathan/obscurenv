@@ -10,24 +10,29 @@ import (
 
 var pullKey string
 var pullEnv string
+var pullFile string
 
 var pullCmd = &cobra.Command{
 	Use:   "pull",
-	Short: "Download, decrypt, and write .env",
+	Short: "Download, decrypt, and write a local env file",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, err := loadProjectConfig()
 		if err != nil {
 			return err
 		}
 		environment := resolveEnvironment(pullEnv, config)
+		file, err := resolveManagedFile(pullFile, config, false)
+		if err != nil {
+			return err
+		}
 		passphrase, err := promptSecret("Encryption passphrase", pullKey)
 		if err != nil {
 			return err
 		}
-		if _, err := pullEnvironment(environment, passphrase, true); err != nil {
+		if _, err := pullEnvironment(environment, passphrase, file, true); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Pulled %q into .env.\n", environment)
+		fmt.Fprintf(cmd.OutOrStdout(), "Pulled %q into %s.\n", environment, file)
 		return nil
 	},
 }
@@ -35,11 +40,16 @@ var pullCmd = &cobra.Command{
 func init() {
 	pullCmd.Flags().StringVarP(&pullKey, "key", "k", "", "Encryption passphrase")
 	pullCmd.Flags().StringVarP(&pullEnv, "env", "e", "", "Environment name")
+	pullCmd.Flags().StringVar(&pullFile, "file", "", "Managed local file path, such as .env or local.properties")
 }
 
-func pullEnvironment(environment, passphrase string, writeFile bool) ([]byte, error) {
+func pullEnvironment(environment, passphrase, file string, writeFile bool) ([]byte, error) {
 	if passphrase == "" {
 		return nil, fmt.Errorf("encryption passphrase is required")
+	}
+	file, err := validateManagedFile(file)
+	if err != nil {
+		return nil, err
 	}
 	config, err := loadProjectConfig()
 	if err != nil {
@@ -55,16 +65,16 @@ func pullEnvironment(environment, passphrase string, writeFile bool) ([]byte, er
 	}
 	plaintext, err := obecrypto.DecryptWithPassphrase(resp.EncryptedPayload, passphrase)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt failed; .env was not modified: %w", err)
+		return nil, fmt.Errorf("decrypt failed; %s was not modified: %w", file, err)
 	}
 	if !writeFile {
 		return plaintext, nil
 	}
-	tmp := ".env.obe.tmp"
+	tmp := file + ".obe.tmp"
 	if err := os.WriteFile(tmp, plaintext, 0600); err != nil {
 		return nil, err
 	}
-	if err := os.Rename(tmp, ".env"); err != nil {
+	if err := os.Rename(tmp, file); err != nil {
 		_ = os.Remove(tmp)
 		return nil, err
 	}

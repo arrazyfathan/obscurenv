@@ -50,6 +50,14 @@ printf 'DATABASE_URL=postgres://localhost\nSECRET=local-secret\n' > .env
 obe push
 ```
 
+Android/Gradle projects can use `local.properties` instead:
+
+```sh
+printf 'sdk.dir=/Users/you/Library/Android/sdk\nAPI_KEY=local-secret\n' > local.properties
+obe init --file local.properties
+obe push
+```
+
 `obe push`, `obe pull`, `obe use`, and `obe run` prompt for the encryption passphrase when `-k` is omitted. Passphrases are never stored.
 
 ## Common Commands
@@ -73,7 +81,9 @@ obe login --api-url https://obe.example.com --email you@example.com
 obe login --api-url https://obe.example.com --username yourname
 obe login --token "$TOKEN" --api-url https://obe.example.com
 obe init --project my-app --env development --create
+obe init --project android-app --env development --file local.properties
 obe push --env development --key "$OBE_PASSPHRASE"
+obe push --file local.properties --env development --key "$OBE_PASSPHRASE"
 obe run --env staging --key "$OBE_PASSPHRASE" -- npm start
 ```
 
@@ -108,11 +118,21 @@ Local files:
 - `.obe.json`: project config created by `obe init`.
 - `~/.obe/credentials.json`: API token and API URL created by `obe login`.
 - `.env`: plaintext env file; do not commit it.
+- `local.properties`: supported plaintext Android/Gradle properties file; do not commit it.
+
+Managed file selection:
+
+- `--file` overrides all other file selection.
+- `.obe.json` `env_file` is used when present.
+- Otherwise, the CLI auto-detects `.env` or `local.properties`.
+- If both `.env` and `local.properties` exist, pass `--file` to choose one.
+- `obe pull` defaults to `.env` when no local managed file exists yet.
 
 Recommended `.gitignore` for projects using Obscurenv:
 
 ```gitignore
 .env
+local.properties
 .obe.json
 ```
 
@@ -252,7 +272,7 @@ Use the CLI for normal operation. API calls should send only encrypted payloads,
 
 ## Security Model
 
-- Plaintext `.env` content is read only by the CLI.
+- Plaintext `.env` or `local.properties` content is read only by the CLI.
 - Passphrases are used only by the CLI and are never persisted.
 - Encryption uses Argon2id and AES-256-GCM.
 - Backend stores encrypted payloads as opaque text.

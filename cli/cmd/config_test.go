@@ -47,6 +47,26 @@ func TestProjectConfigFileUsesOBEName(t *testing.T) {
 	}
 }
 
+func TestProjectConfigPersistsEnvFile(t *testing.T) {
+	withTempWorkingDir(t)
+
+	if err := saveProjectConfig(ProjectConfig{
+		ProjectSlug:       "my-app",
+		ActiveEnvironment: "development",
+		EnvFile:           "local.properties",
+	}); err != nil {
+		t.Fatalf("saveProjectConfig: %v", err)
+	}
+
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.EnvFile != "local.properties" {
+		t.Fatalf("EnvFile = %q, want local.properties", config.EnvFile)
+	}
+}
+
 func TestCredentialsPathUsesOBEDirectory(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
