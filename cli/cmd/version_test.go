@@ -38,7 +38,7 @@ func TestFormatVersion(t *testing.T) {
 	})
 
 	for _, want := range []string{
-		"obv version 1.2.3",
+		"obe version 1.2.3",
 		"commit: abc123",
 		"built: 2026-07-31T00:00:00Z",
 	} {

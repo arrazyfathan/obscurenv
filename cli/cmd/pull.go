@@ -60,7 +60,7 @@ func pullEnvironment(environment, passphrase string, writeFile bool) ([]byte, er
 	if !writeFile {
 		return plaintext, nil
 	}
-	tmp := ".env.obv.tmp"
+	tmp := ".env.obe.tmp"
 	if err := os.WriteFile(tmp, plaintext, 0600); err != nil {
 		return nil, err
 	}

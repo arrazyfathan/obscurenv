@@ -22,10 +22,10 @@ export GOMODCACHE
 help:
 	@printf '%s\n' 'Available targets:'
 	@printf '%s\n' '  make version    Print the CLI version configured for builds'
-	@printf '%s\n' '  make build      Build the obv CLI into ./bin/obv'
-	@printf '%s\n' '  make install    Build and install obv using ./install.sh'
-	@printf '%s\n' '  make package    Build and package obv into ./dist'
-	@printf '%s\n' '  make release    Run checks, then package obv into ./dist'
+	@printf '%s\n' '  make build      Build the obe CLI into ./bin/obe'
+	@printf '%s\n' '  make install    Build and install obe using ./install.sh'
+	@printf '%s\n' '  make package    Build and package obe into ./dist'
+	@printf '%s\n' '  make release    Run checks, then package obe into ./dist'
 	@printf '%s\n' '  make test       Run Go tests for backend and CLI'
 	@printf '%s\n' '  make vet        Run go vet for backend and CLI'
 	@printf '%s\n' '  make check      Run test and vet'
@@ -42,14 +42,14 @@ check-version:
 
 build: check-version
 	@mkdir -p $(BIN_DIR)
-	cd cli && GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -ldflags "$(LDFLAGS)" -o ../$(BIN_DIR)/obv .
+	cd cli && GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -ldflags "$(LDFLAGS)" -o ../$(BIN_DIR)/obe .
 
 install: check-version
 	VERSION="$(VERSION)" COMMIT="$(COMMIT)" BUILT_AT="$(BUILT_AT)" INSTALL_DIR="$(INSTALL_DIR)" ./install.sh
 
 package: build
 	@mkdir -p $(DIST_DIR)
-	tar -C $(BIN_DIR) -czf $(DIST_DIR)/obv_$(VERSION)_$(GOOS)_$(GOARCH).tar.gz obv
+	tar -C $(BIN_DIR) -czf $(DIST_DIR)/obe_$(VERSION)_$(GOOS)_$(GOARCH).tar.gz obe
 
 release: check package
 

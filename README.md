@@ -1,4 +1,4 @@
-# Obscurenv (`obv`)
+# Obscurenv (`obe`)
 
 Self-hosted, zero-knowledge encrypted `.env` storage.
 
@@ -7,7 +7,7 @@ The CLI encrypts `.env` locally before upload. The backend stores only opaque en
 ## Components
 
 - `backend/`: Go REST API using Gin and PostgreSQL.
-- `cli/`: Go Cobra CLI named `obv`.
+- `cli/`: Go Cobra CLI named `obe`.
 
 ## Requirements
 
@@ -39,40 +39,40 @@ source ~/.zshrc
 Run the interactive setup:
 
 ```sh
-obv login --register
-obv init
+obe login --register
+obe init
 ```
 
 Then push a local `.env`:
 
 ```sh
 printf 'DATABASE_URL=postgres://localhost\nSECRET=local-secret\n' > .env
-obv push
+obe push
 ```
 
-`obv push`, `obv pull`, `obv swap`, and `obv run` prompt for the encryption passphrase when `-k` is omitted. Passphrases are never stored.
+`obe push`, `obe pull`, `obe swap`, and `obe run` prompt for the encryption passphrase when `-k` is omitted. Passphrases are never stored.
 
 ## Common Commands
 
 ```sh
-obv login --register
-obv init
-obv push
-obv pull
-obv env ls
-obv swap production
-obv run -- npm start
-obv version
+obe login --register
+obe init
+obe push
+obe pull
+obe env ls
+obe swap production
+obe run -- npm start
+obe version
 ```
 
 Script-friendly examples:
 
 ```sh
-obv login --api-url https://obv.example.com --email you@example.com
-obv login --token "$TOKEN" --api-url https://obv.example.com
-obv init --project my-app --env development --create
-obv push --env development --key "$OBV_PASSPHRASE"
-obv run --env staging --key "$OBV_PASSPHRASE" -- npm start
+obe login --api-url https://obe.example.com --email you@example.com
+obe login --token "$TOKEN" --api-url https://obe.example.com
+obe init --project my-app --env development --create
+obe push --env development --key "$OBE_PASSPHRASE"
+obe run --env staging --key "$OBE_PASSPHRASE" -- npm start
 ```
 
 ## Configuration
@@ -89,25 +89,25 @@ Runtime variables:
 DATABASE_URL=postgres://obv:obv@localhost:5432/obv?sslmode=disable
 ADDR=:8080
 PORT=
-OBV_API_URL=http://localhost:8080
+OBE_API_URL=http://localhost:8080
 ```
 
 Precedence:
 
 - Backend listens on `ADDR`, then `PORT`, then `:8080`.
-- CLI uses `OBV_API_URL`; if unset, it uses the API URL saved by `obv login`; otherwise it falls back to `https://localhost:8080`.
+- CLI uses `OBE_API_URL`; if unset, it uses the API URL saved by `obe login`; otherwise it falls back to `https://localhost:8080`.
 
 Local files:
 
-- `.obv.json`: project config created by `obv init`.
-- `~/.obv/credentials.json`: API token and API URL created by `obv login`.
+- `.obe.json`: project config created by `obe init`.
+- `~/.obe/credentials.json`: API token and API URL created by `obe login`.
 - `.env`: plaintext env file; do not commit it.
 
 Recommended `.gitignore` for projects using Obscurenv:
 
 ```gitignore
 .env
-.obv.json
+.obe.json
 ```
 
 ## Development
@@ -128,7 +128,7 @@ make down
 
 Useful targets:
 
-- `make build`: build `./bin/obv`.
+- `make build`: build `./bin/obe`.
 - `make install`: build and install with `./install.sh`.
 - `make test`: run backend and CLI tests.
 - `make vet`: run `go vet`.
@@ -157,8 +157,8 @@ Check the current version:
 
 ```sh
 make version
-obv version
-obv --version
+obe version
+obe --version
 ```
 
 Build metadata includes version, Git commit, and UTC build time.
@@ -169,14 +169,14 @@ Cut a release:
 printf '0.2.1\n' > VERSION
 make release
 git add VERSION Makefile install.sh README.md cli/cmd
-git commit -m "Release obv v0.2.1"
+git commit -m "Release obe v0.2.1"
 git tag v0.2.1
 ```
 
 Release artifacts are written to `dist/`, for example:
 
 ```text
-dist/obv_0.2.1_darwin_arm64.tar.gz
+dist/obe_0.2.1_darwin_arm64.tar.gz
 ```
 
 ## Backend Deployment
@@ -201,7 +201,7 @@ Vercel:
 After deployment:
 
 ```sh
-obv login --api-url https://your-obscurenv-backend.example.com
+obe login --api-url https://your-obscurenv-backend.example.com
 ```
 
 Production notes:
@@ -241,19 +241,19 @@ Use the CLI for normal operation. API calls should send only encrypted payloads,
 - Backend stores encrypted payloads as opaque text.
 - API tokens are hashed in the database.
 - Decrypt failure exits without modifying the existing `.env`.
-- `obv run` injects variables through process environment and does not write decrypted content to disk.
+- `obe run` injects variables through process environment and does not write decrypted content to disk.
 
 ## Troubleshooting
 
 Check the API:
 
 ```sh
-curl -i "$OBV_API_URL/healthz"
+curl -i "$OBE_API_URL/healthz"
 ```
 
 Common fixes:
 
-- `connection refused`: backend, PostgreSQL, `OBV_API_URL`, or `DATABASE_URL` is wrong.
-- `project not found`: run `obv init --create` or create the project on the server.
-- `decrypt failed; .env was not modified`: use the same passphrase used for `obv push`.
-- CLI tries `https://localhost:8080`: run `obv login --api-url <url>` or set `OBV_API_URL`.
+- `connection refused`: backend, PostgreSQL, `OBE_API_URL`, or `DATABASE_URL` is wrong.
+- `project not found`: run `obe init --create` or create the project on the server.
+- `decrypt failed; .env was not modified`: use the same passphrase used for `obe push`.
+- CLI tries `https://localhost:8080`: run `obe login --api-url <url>` or set `OBE_API_URL`.

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	projectConfigFile = ".obv.json"
+	projectConfigFile = ".obe.json"
 	defaultAPIURL     = "https://localhost:8080"
 )
 
@@ -26,7 +26,7 @@ type Credentials struct {
 }
 
 var rootCmd = &cobra.Command{
-	Use:     "obv",
+	Use:     "obe",
 	Short:   "Zero-knowledge encrypted .env cloud storage",
 	Version: normalizeVersion(version),
 }
@@ -52,7 +52,7 @@ func init() {
 }
 
 func apiBaseURL() string {
-	if value := os.Getenv("OBV_API_URL"); value != "" {
+	if value := os.Getenv("OBE_API_URL"); value != "" {
 		return value
 	}
 	return defaultAPIURL
@@ -64,7 +64,7 @@ func loadClient() (*api.Client, error) {
 		return nil, err
 	}
 	baseURL := apiBaseURL()
-	if os.Getenv("OBV_API_URL") == "" && credentials.APIURL != "" {
+	if os.Getenv("OBE_API_URL") == "" && credentials.APIURL != "" {
 		baseURL = credentials.APIURL
 	}
 	return api.New(baseURL, credentials.Token), nil
@@ -74,7 +74,7 @@ func loadProjectConfig() (*ProjectConfig, error) {
 	data, err := os.ReadFile(projectConfigFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%s not found; run: obv init", projectConfigFile)
+			return nil, fmt.Errorf("%s not found; run: obe init", projectConfigFile)
 		}
 		return nil, fmt.Errorf("read %s: %w", projectConfigFile, err)
 	}
@@ -105,7 +105,7 @@ func credentialsPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".obv", "credentials.json"), nil
+	return filepath.Join(home, ".obe", "credentials.json"), nil
 }
 
 func loadCredentials() (*Credentials, error) {
@@ -116,7 +116,7 @@ func loadCredentials() (*Credentials, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("credentials not found; run: obv login")
+			return nil, fmt.Errorf("credentials not found; run: obe login")
 		}
 		return nil, fmt.Errorf("read credentials: %w", err)
 	}

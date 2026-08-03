@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project
-Obscurenv (`obv`) is a zero-knowledge encrypted `.env` storage product.
+Obscurenv (`obe`) is a zero-knowledge encrypted `.env` storage product.
 
 The repository is split into:
 
@@ -32,10 +32,10 @@ The repository is split into:
 - Use Cobra for commands.
 - Keep crypto code isolated under `cli/pkg/crypto`.
 - Keep API calls isolated from command handlers.
-- Read `.obv.json` from the current project directory.
-- Read API credentials from `~/.obv/credentials.json`.
+- Read `.obe.json` from the current project directory.
+- Read API credentials from `~/.obe/credentials.json`.
 - Do not overwrite `.env` until decryption and validation have completed successfully.
-- `obv run` must inject variables through `os/exec.Cmd.Env` and must not write decrypted content to disk.
+- `obe run` must inject variables through `os/exec.Cmd.Env` and must not write decrypted content to disk.
 - Prefer clear, actionable CLI errors with non-zero exit codes.
 
 ## Test Expectations

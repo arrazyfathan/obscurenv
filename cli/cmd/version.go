@@ -51,5 +51,5 @@ func normalizeVersion(value string) string {
 }
 
 func FormatVersion(info VersionInfo) string {
-	return fmt.Sprintf("obv version %s\ncommit: %s\nbuilt: %s\n", info.Version, info.Commit, info.BuiltAt)
+	return fmt.Sprintf("obe version %s\ncommit: %s\nbuilt: %s\n", info.Version, info.Commit, info.BuiltAt)
 }

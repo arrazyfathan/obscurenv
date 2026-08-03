@@ -27,7 +27,7 @@ var statusCmd = &cobra.Command{
 		}
 
 		apiURL := apiBaseURL()
-		if os.Getenv("OBV_API_URL") == "" && credentials != nil && credentials.APIURL != "" {
+		if os.Getenv("OBE_API_URL") == "" && credentials != nil && credentials.APIURL != "" {
 			apiURL = credentials.APIURL
 		}
 		fmt.Fprintf(out, "API: %s\n", apiURL)
@@ -65,7 +65,7 @@ func readProjectConfigIfPresent() (*ProjectConfig, error) {
 	data, err := os.ReadFile(projectConfigFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("run: obv init")
+			return nil, fmt.Errorf("run: obe init")
 		}
 		return nil, fmt.Errorf("read %s: %w", projectConfigFile, err)
 	}
@@ -90,7 +90,7 @@ func readCredentialsIfPresent() (*Credentials, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("run: obv login")
+			return nil, fmt.Errorf("run: obe login")
 		}
 		return nil, fmt.Errorf("read credentials: %w", err)
 	}

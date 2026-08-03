@@ -5,7 +5,7 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 BUILD_DIR=""
 REPO_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CLI_DIR="$REPO_DIR/cli"
-BIN_NAME="obv"
+BIN_NAME="obe"
 VERSION="${VERSION:-}"
 COMMIT="${COMMIT:-}"
 BUILT_AT="${BUILT_AT:-}"
@@ -19,7 +19,7 @@ usage() {
   printf '%s\n' "Usage: ./install.sh [--install-dir DIR]"
   printf '%s\n' ""
   printf '%s\n' "Options:"
-  printf '%s\n' "  --install-dir DIR   Install obv into DIR (default: \$HOME/.local/bin)"
+  printf '%s\n' "  --install-dir DIR   Install obe into DIR (default: \$HOME/.local/bin)"
   printf '%s\n' "  -h, --help          Show this help"
 }
 
@@ -50,7 +50,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if ! command -v go >/dev/null 2>&1; then
-  printf '%s\n' "install.sh: Go is required to build obv. Install Go 1.24 or newer, then rerun this script." >&2
+  printf '%s\n' "install.sh: Go is required to build obe. Install Go 1.24 or newer, then rerun this script." >&2
   exit 1
 fi
 
@@ -82,7 +82,7 @@ fi
 
 LDFLAGS="-X github.com/obscurenv/obscurenv/cli/cmd.version=$VERSION -X github.com/obscurenv/obscurenv/cli/cmd.commit=$COMMIT -X github.com/obscurenv/obscurenv/cli/cmd.builtAt=$BUILT_AT"
 
-BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/obv-install.XXXXXX")
+BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/obe-install.XXXXXX")
 cleanup() {
   if [ -n "$BUILD_DIR" ] && [ -d "$BUILD_DIR" ]; then
     rm -rf "$BUILD_DIR"
