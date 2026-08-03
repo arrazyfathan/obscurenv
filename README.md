@@ -70,6 +70,7 @@ Script-friendly examples:
 
 ```sh
 obe login --api-url https://obe.example.com --email you@example.com
+obe login --api-url https://obe.example.com --username yourname
 obe login --token "$TOKEN" --api-url https://obe.example.com
 obe init --project my-app --env development --create
 obe push --env development --key "$OBE_PASSPHRASE"

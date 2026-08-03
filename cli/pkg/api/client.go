@@ -26,11 +26,13 @@ type PushRequest struct {
 
 type RegisterRequest struct {
 	Email    string `json:"email"`
+	Username string `json:"username,omitempty"`
 	Password string `json:"password"`
 }
 
 type LoginRequest struct {
 	Email     string `json:"email"`
+	Username  string `json:"username,omitempty"`
 	Password  string `json:"password"`
 	TokenName string `json:"token_name"`
 }
