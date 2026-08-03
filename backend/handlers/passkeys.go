@@ -17,6 +17,7 @@ const (
 	passkeyRegisterSession = "passkey_register"
 	passkeyLoginSession    = "passkey_login"
 	defaultPasskeyName     = "Passkey"
+	passkeySessionTTL      = 5 * time.Minute
 )
 
 type passkeyUser struct {
@@ -326,6 +327,8 @@ func (h *AuthHandler) discoverPasskeyUser(ctx context.Context) webauthn.Discover
 }
 
 func (h *AuthHandler) storePasskeySession(ctx context.Context, kind, userID, label string, session webauthn.SessionData) (string, error) {
+	expiresAt := passkeySessionExpires(session)
+	session.Expires = expiresAt
 	data, err := json.Marshal(session)
 	if err != nil {
 		return "", err
@@ -335,8 +338,15 @@ func (h *AuthHandler) storePasskeySession(ctx context.Context, kind, userID, lab
 		INSERT INTO webauthn_sessions (user_id, kind, label, session_json, expires_at)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
-	`, nullIfEmpty(userID), kind, nullIfEmpty(label), string(data), session.Expires).Scan(&ceremonyID)
+	`, nullIfEmpty(userID), kind, nullIfEmpty(label), string(data), expiresAt).Scan(&ceremonyID)
 	return ceremonyID, err
+}
+
+func passkeySessionExpires(session webauthn.SessionData) time.Time {
+	if !session.Expires.IsZero() {
+		return session.Expires
+	}
+	return time.Now().UTC().Add(passkeySessionTTL)
 }
 
 func (h *AuthHandler) consumePasskeySession(ctx context.Context, ceremonyID, kind, userID string) (webauthn.SessionData, string, error) {
