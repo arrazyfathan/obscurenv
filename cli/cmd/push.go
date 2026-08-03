@@ -16,15 +16,16 @@ var pushEnv string
 var pushFile string
 
 var pushCmd = &cobra.Command{
-	Use:   "push",
+	Use:   "push [file]",
 	Short: "Encrypt a local env file and upload it",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config, err := loadProjectConfig()
 		if err != nil {
 			return err
 		}
 		environment := resolveEnvironment(pushEnv, config)
-		file, err := resolveManagedFile(pushFile, config, true)
+		file, err := resolvePushManagedFile(pushFile, args, config)
 		if err != nil {
 			return err
 		}
@@ -45,6 +46,24 @@ func init() {
 	pushCmd.Flags().StringVarP(&pushKey, "key", "k", "", "Encryption passphrase")
 	pushCmd.Flags().StringVarP(&pushEnv, "env", "e", "", "Environment name")
 	pushCmd.Flags().StringVar(&pushFile, "file", "", "Managed local file path, such as .env or local.properties")
+}
+
+func resolvePushManagedFile(flagValue string, args []string, config *ProjectConfig) (string, error) {
+	if flagValue != "" {
+		return validateManagedFile(flagValue)
+	}
+	if len(args) > 0 {
+		return validateManagedFile(args[0])
+	}
+
+	file, err := autoDetectManagedFile(true)
+	if err == nil {
+		return file, nil
+	}
+	if config != nil && config.EnvFile != "" {
+		return validateManagedFile(config.EnvFile)
+	}
+	return "", err
 }
 
 func pushEnvironment(environment, passphrase, file string) (int, error) {

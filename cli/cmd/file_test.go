@@ -159,6 +159,122 @@ func TestPushAutoDetectsLocalProperties(t *testing.T) {
 	}
 }
 
+func TestPushCommandRemembersLatestPushedFileArgument(t *testing.T) {
+	withTempWorkingDir(t)
+	setupFileCommandTest(t, ProjectConfig{
+		ProjectSlug:       "obsecurenv",
+		ActiveEnvironment: "development",
+	})
+	writeTestFile(t, defaultEnvFile, "SECRET=dotenv\n")
+	writeTestFile(t, gradleEnvFile, "sdk.dir=/opt/android\n")
+
+	restore := stubAPIClient(pushSuccessHandler())
+	t.Cleanup(restore)
+	oldKey := pushKey
+	oldEnv := pushEnv
+	oldFile := pushFile
+	t.Cleanup(func() {
+		pushKey = oldKey
+		pushEnv = oldEnv
+		pushFile = oldFile
+	})
+	pushKey = "passphrase"
+	pushEnv = ""
+	pushFile = ""
+
+	if err := pushCmd.RunE(pushCmd, []string{gradleEnvFile}); err != nil {
+		t.Fatalf("push local.properties: %v", err)
+	}
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.EnvFile != gradleEnvFile {
+		t.Fatalf("EnvFile = %q, want %q", config.EnvFile, gradleEnvFile)
+	}
+
+	if err := pushCmd.RunE(pushCmd, []string{defaultEnvFile}); err != nil {
+		t.Fatalf("push .env: %v", err)
+	}
+	config, err = loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.EnvFile != defaultEnvFile {
+		t.Fatalf("EnvFile = %q, want %q", config.EnvFile, defaultEnvFile)
+	}
+}
+
+func TestPushCommandAutoDetectsLocalPropertiesOverStaleConfig(t *testing.T) {
+	withTempWorkingDir(t)
+	setupFileCommandTest(t, ProjectConfig{
+		ProjectSlug:       "obsecurenv",
+		ActiveEnvironment: "development",
+		EnvFile:           defaultEnvFile,
+	})
+	writeTestFile(t, gradleEnvFile, "sdk.dir=/opt/android\n")
+
+	restore := stubAPIClient(pushSuccessHandler())
+	t.Cleanup(restore)
+	oldKey := pushKey
+	oldEnv := pushEnv
+	oldFile := pushFile
+	t.Cleanup(func() {
+		pushKey = oldKey
+		pushEnv = oldEnv
+		pushFile = oldFile
+	})
+	pushKey = "passphrase"
+	pushEnv = ""
+	pushFile = ""
+
+	if err := pushCmd.RunE(pushCmd, nil); err != nil {
+		t.Fatalf("push auto-detected local.properties: %v", err)
+	}
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.EnvFile != gradleEnvFile {
+		t.Fatalf("EnvFile = %q, want %q", config.EnvFile, gradleEnvFile)
+	}
+}
+
+func TestPushCommandAutoDetectsDotenvOverStaleConfig(t *testing.T) {
+	withTempWorkingDir(t)
+	setupFileCommandTest(t, ProjectConfig{
+		ProjectSlug:       "obsecurenv",
+		ActiveEnvironment: "development",
+		EnvFile:           gradleEnvFile,
+	})
+	writeTestFile(t, defaultEnvFile, "SECRET=dotenv\n")
+
+	restore := stubAPIClient(pushSuccessHandler())
+	t.Cleanup(restore)
+	oldKey := pushKey
+	oldEnv := pushEnv
+	oldFile := pushFile
+	t.Cleanup(func() {
+		pushKey = oldKey
+		pushEnv = oldEnv
+		pushFile = oldFile
+	})
+	pushKey = "passphrase"
+	pushEnv = ""
+	pushFile = ""
+
+	if err := pushCmd.RunE(pushCmd, nil); err != nil {
+		t.Fatalf("push auto-detected .env: %v", err)
+	}
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.EnvFile != defaultEnvFile {
+		t.Fatalf("EnvFile = %q, want %q", config.EnvFile, defaultEnvFile)
+	}
+}
+
 func TestPullWritesResolvedLocalProperties(t *testing.T) {
 	withTempWorkingDir(t)
 	setupFileCommandTest(t, ProjectConfig{
@@ -253,6 +369,21 @@ func setupFileCommandTest(t *testing.T, config ProjectConfig) {
 	if err := saveProjectConfig(config); err != nil {
 		t.Fatalf("saveProjectConfig: %v", err)
 	}
+}
+
+func pushSuccessHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/env/push" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":"Pushed successfully","version":2}`))
+	})
 }
 
 func pullPayloadHandler(t *testing.T, payload string) http.Handler {

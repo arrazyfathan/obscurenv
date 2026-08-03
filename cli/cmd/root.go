@@ -182,6 +182,10 @@ func resolveManagedFile(flagValue string, config *ProjectConfig, requireExisting
 		return validateManagedFile(config.EnvFile)
 	}
 
+	return autoDetectManagedFile(requireExisting)
+}
+
+func autoDetectManagedFile(requireExisting bool) (string, error) {
 	dotenvExists, err := fileExists(defaultEnvFile)
 	if err != nil {
 		return "", err
