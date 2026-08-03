@@ -46,7 +46,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(pullCmd)
-	rootCmd.AddCommand(swapCmd)
+	rootCmd.AddCommand(useCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(envCmd)
 	rootCmd.AddCommand(statusCmd)

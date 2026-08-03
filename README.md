@@ -50,7 +50,7 @@ printf 'DATABASE_URL=postgres://localhost\nSECRET=local-secret\n' > .env
 obe push
 ```
 
-`obe push`, `obe pull`, `obe swap`, and `obe run` prompt for the encryption passphrase when `-k` is omitted. Passphrases are never stored.
+`obe push`, `obe pull`, `obe use`, and `obe run` prompt for the encryption passphrase when `-k` is omitted. Passphrases are never stored.
 
 ## Common Commands
 
@@ -60,7 +60,8 @@ obe init
 obe push
 obe pull
 obe env ls
-obe swap production
+obe use list
+obe use production
 obe run -- npm start
 obe version
 ```
