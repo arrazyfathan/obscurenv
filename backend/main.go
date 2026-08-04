@@ -48,10 +48,12 @@ func main() {
 	protected.GET("/projects", projectHandler.List)
 	protected.GET("/projects/:slug", projectHandler.Get)
 	protected.POST("/projects", projectHandler.Create)
+	protected.DELETE("/projects/:slug", projectHandler.Delete)
 	protected.POST("/env/push", envHandler.Push)
 	protected.GET("/env/pull", envHandler.Pull)
 	protected.GET("/env/list", envHandler.List)
 	protected.GET("/env/versions", envHandler.Versions)
+	protected.DELETE("/env", envHandler.Delete)
 
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("run server: %v", err)

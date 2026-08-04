@@ -29,3 +29,22 @@ func TestPushRejectsChecksumMismatch(t *testing.T) {
 		t.Fatalf("Push body = %q, want checksum mismatch error", rec.Body.String())
 	}
 }
+
+func TestDeleteEnvironmentRequiresProjectAndEnvironment(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handler := NewEnvHandler(nil)
+	router.DELETE("/api/v1/env", handler.Delete)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/env?project=app", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Delete returned %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "project and environment are required") {
+		t.Fatalf("Delete body = %q, want missing parameter error", rec.Body.String())
+	}
+}

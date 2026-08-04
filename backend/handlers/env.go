@@ -206,3 +206,35 @@ func (h *EnvHandler) Versions(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"versions": versions})
 }
+
+func (h *EnvHandler) Delete(c *gin.Context) {
+	projectSlug := c.Query("project")
+	environment := c.Query("environment")
+	if projectSlug == "" || environment == "" {
+		badRequest(c, "project and environment are required")
+		return
+	}
+
+	result, err := h.db.ExecContext(c.Request.Context(), `
+		DELETE FROM env_versions ev
+		USING projects p
+		WHERE ev.project_id = p.id
+			AND p.user_id = $1
+			AND p.slug = $2
+			AND ev.environment_name = $3
+	`, middleware.UserID(c), projectSlug, environment)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to delete environment")
+		return
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to confirm environment deletion")
+		return
+	}
+	if deleted == 0 {
+		errorJSON(c, http.StatusNotFound, "environment not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "environment deleted"})
+}

@@ -130,6 +130,11 @@ func (c *Client) GetProject(slug string) (*ProjectResponse, error) {
 	return &out, nil
 }
 
+func (c *Client) DeleteProject(slug string) error {
+	path := "/api/v1/projects/" + url.PathEscape(slug)
+	return c.do(http.MethodDelete, path, nil, nil)
+}
+
 func (c *Client) Push(req PushRequest) (*PushResponse, error) {
 	var out PushResponse
 	if err := c.do(http.MethodPost, "/api/v1/env/push", req, &out); err != nil {
@@ -154,6 +159,11 @@ func (c *Client) List(project string) (*ListResponse, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+func (c *Client) DeleteEnvironment(project, environment string) error {
+	path := "/api/v1/env?project=" + url.QueryEscape(project) + "&environment=" + url.QueryEscape(environment)
+	return c.do(http.MethodDelete, path, nil, nil)
 }
 
 func (c *Client) do(method, path string, body any, out any) error {

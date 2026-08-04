@@ -53,6 +53,7 @@ func init() {
 	rootCmd.AddCommand(useCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(envCmd)
+	rootCmd.AddCommand(projectCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(versionCmd)
 }

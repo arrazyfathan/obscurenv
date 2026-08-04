@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var envDeleteYes bool
+
 var envCmd = &cobra.Command{
 	Use:   "env",
 	Short: "Manage remote environments",
@@ -52,7 +54,49 @@ var envUseCmd = &cobra.Command{
 	},
 }
 
+var envDeleteCmd = &cobra.Command{
+	Use:     "rm <environment>",
+	Aliases: []string{"delete", "remove"},
+	Short:   "Delete a remote environment from the server",
+	Args:    cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config, err := loadProjectConfig()
+		if err != nil {
+			return err
+		}
+		environment := args[0]
+		if err := confirmRemoteDeletion(envDeleteYes, fmt.Sprintf("Delete remote environment %q from project %q?", environment, config.ProjectSlug)); err != nil {
+			return err
+		}
+		client, err := loadClient()
+		if err != nil {
+			return err
+		}
+		if err := client.DeleteEnvironment(config.ProjectSlug, environment); err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Deleted remote environment %q from project %q.\n", environment, config.ProjectSlug)
+		return nil
+	},
+}
+
+func confirmRemoteDeletion(yes bool, label string) error {
+	if yes {
+		return nil
+	}
+	confirmed, err := promptConfirm(label, false)
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		return fmt.Errorf("delete canceled; pass --yes to confirm")
+	}
+	return nil
+}
+
 func init() {
+	envDeleteCmd.Flags().BoolVarP(&envDeleteYes, "yes", "y", false, "Confirm deletion without prompting")
 	envCmd.AddCommand(envListCmd)
 	envCmd.AddCommand(envUseCmd)
+	envCmd.AddCommand(envDeleteCmd)
 }

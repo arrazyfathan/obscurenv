@@ -170,6 +170,27 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 	})
 }
 
+func (h *ProjectHandler) Delete(c *gin.Context) {
+	result, err := h.db.ExecContext(c.Request.Context(), `
+		DELETE FROM projects
+		WHERE user_id = $1 AND slug = $2
+	`, middleware.UserID(c), c.Param("slug"))
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to delete project")
+		return
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to confirm project deletion")
+		return
+	}
+	if deleted == 0 {
+		errorJSON(c, http.StatusNotFound, "project not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "project deleted"})
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }
