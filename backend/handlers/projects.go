@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -59,21 +60,13 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 }
 
 func (h *ProjectHandler) List(c *gin.Context) {
-	rows, err := h.db.QueryContext(c.Request.Context(), `
-		SELECT
-			p.id,
-			p.name,
-			p.slug,
-			p.created_at,
-			COUNT(DISTINCT ev.environment_name) AS environment_count,
-			MAX(ev.version) AS latest_version,
-			MAX(ev.created_at) AS latest_updated_at
-		FROM projects p
-		LEFT JOIN env_versions ev ON ev.project_id = p.id
-		WHERE p.user_id = $1
-		GROUP BY p.id, p.name, p.slug, p.created_at
-		ORDER BY COALESCE(MAX(ev.created_at), p.created_at) DESC
-	`, middleware.UserID(c))
+	search := c.Query("search")
+	if search == "" {
+		search = c.Query("q")
+	}
+
+	query, args := listProjectsQuery(middleware.UserID(c), search)
+	rows, err := h.db.QueryContext(c.Request.Context(), query, args...)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to list projects")
 		return
@@ -94,6 +87,45 @@ func (h *ProjectHandler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"projects": projects})
+}
+
+func listProjectsQuery(userID, search string) (string, []any) {
+	args := []any{userID}
+	where := "WHERE p.user_id = $1"
+
+	search = strings.TrimSpace(search)
+	if search != "" {
+		args = append(args, "%"+escapePostgresLike(search)+"%")
+		where += ` AND (p.name ILIKE $2 ESCAPE '\' OR p.slug ILIKE $2 ESCAPE '\')`
+	}
+
+	return `
+		SELECT
+			p.id,
+			p.name,
+			p.slug,
+			p.created_at,
+			COUNT(DISTINCT ev.environment_name) AS environment_count,
+			MAX(ev.version) AS latest_version,
+			MAX(ev.created_at) AS latest_updated_at
+		FROM projects p
+		LEFT JOIN env_versions ev ON ev.project_id = p.id
+		` + where + `
+		GROUP BY p.id, p.name, p.slug, p.created_at
+		ORDER BY COALESCE(MAX(ev.created_at), p.created_at) DESC
+	`, args
+}
+
+func escapePostgresLike(value string) string {
+	var builder strings.Builder
+	for _, char := range value {
+		switch char {
+		case '\\', '%', '_':
+			builder.WriteRune('\\')
+		}
+		builder.WriteRune(char)
+	}
+	return builder.String()
 }
 
 func (h *ProjectHandler) Get(c *gin.Context) {
