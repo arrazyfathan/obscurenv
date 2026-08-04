@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/obscurenv/obscurenv/cli/pkg/api"
 )
 
-func TestInitLinksExistingRemoteProjectAfterCreateConflict(t *testing.T) {
+func TestInitLinksExistingRemoteProjectBeforeCreate(t *testing.T) {
 	withTempWorkingDir(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -18,6 +20,7 @@ func TestInitLinksExistingRemoteProjectAfterCreateConflict(t *testing.T) {
 
 	var sawCreate bool
 	var sawGet bool
+	var sawList bool
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -27,11 +30,280 @@ func TestInitLinksExistingRemoteProjectAfterCreateConflict(t *testing.T) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects":
 			sawCreate = true
-			w.WriteHeader(http.StatusConflict)
-			_, _ = w.Write([]byte(`{"error":"project already exists"}`))
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"project-id","slug":"obsecurenv"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/obsecurenv":
 			sawGet = true
 			_, _ = w.Write([]byte(`{"id":"project-id","name":"Obsecurenv","slug":"obsecurenv"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/env/list":
+			sawList = true
+			_, _ = w.Write([]byte(`{"environments":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	if err := saveCredentials(Credentials{Token: "test-token", APIURL: "http://obe.test"}); err != nil {
+		t.Fatalf("saveCredentials: %v", err)
+	}
+
+	oldProject := initProject
+	oldProjectName := initProjectName
+	oldCreateProject := initCreateProject
+	oldEnvironment := initEnvironment
+	oldFile := initFile
+	oldNewAPIClient := newAPIClient
+	t.Cleanup(func() {
+		initProject = oldProject
+		initProjectName = oldProjectName
+		initCreateProject = oldCreateProject
+		initEnvironment = oldEnvironment
+		initFile = oldFile
+		newAPIClient = oldNewAPIClient
+		initCmd.SetOut(nil)
+	})
+	newAPIClient = func(baseURL, token string) *api.Client {
+		client := api.New(baseURL, token)
+		client.HTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return responseFromHandler(handler, req), nil
+		})}
+		return client
+	}
+	initProject = "obsecurenv"
+	initProjectName = ""
+	initCreateProject = false
+	initEnvironment = ""
+	initFile = ""
+	var out bytes.Buffer
+	initCmd.SetOut(&out)
+
+	if err := initCmd.RunE(initCmd, nil); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if !sawGet {
+		t.Fatal("expected init to check the existing remote project")
+	}
+	if sawCreate {
+		t.Fatal("expected init not to create when remote project exists")
+	}
+	if !sawList {
+		t.Fatal("expected init to list remote environments")
+	}
+
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.ProjectSlug != "obsecurenv" {
+		t.Fatalf("ProjectSlug = %q, want obsecurenv", config.ProjectSlug)
+	}
+	if config.ActiveEnvironment != "development" {
+		t.Fatalf("ActiveEnvironment = %q, want development", config.ActiveEnvironment)
+	}
+	if !bytes.Contains(out.Bytes(), []byte(`Linked local config to remote project "obsecurenv".`)) {
+		t.Fatalf("output = %q, want link message", out.String())
+	}
+}
+
+func TestInitAutoLinkRequiresEnvironmentWhenRemoteEnvironmentsExist(t *testing.T) {
+	withTempWorkingDir(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("OBE_API_URL", "")
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/obsecurenv":
+			_, _ = w.Write([]byte(`{"id":"project-id","name":"Obsecurenv","slug":"obsecurenv"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/env/list":
+			_, _ = w.Write([]byte(`{"environments":["development","staging","production"]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	setupInitCommandTest(t, handler)
+	initProject = "obsecurenv"
+	initEnvironment = ""
+	var out bytes.Buffer
+	initCmd.SetOut(&out)
+
+	err := initCmd.RunE(initCmd, nil)
+	if err == nil {
+		t.Fatal("expected init to require --env in non-interactive mode")
+	}
+	if !strings.Contains(err.Error(), "environment is required") {
+		t.Fatalf("error = %q, want environment required", err)
+	}
+	for _, want := range []string{
+		"Available environments:",
+		"1. development",
+		"2. staging",
+		"3. production",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output = %q, want %q", out.String(), want)
+		}
+	}
+}
+
+func TestInitAutoLinkUsesEnvFlagWithoutListingRemoteEnvironments(t *testing.T) {
+	withTempWorkingDir(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("OBE_API_URL", "")
+
+	var sawList bool
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/obsecurenv":
+			_, _ = w.Write([]byte(`{"id":"project-id","name":"Obsecurenv","slug":"obsecurenv"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/env/list":
+			sawList = true
+			_, _ = w.Write([]byte(`{"environments":["development"]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	setupInitCommandTest(t, handler)
+	initProject = "obsecurenv"
+	initEnvironment = "production"
+	var out bytes.Buffer
+	initCmd.SetOut(&out)
+
+	if err := initCmd.RunE(initCmd, nil); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if sawList {
+		t.Fatal("expected init not to list remote environments when --env is provided")
+	}
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.ActiveEnvironment != "production" {
+		t.Fatalf("ActiveEnvironment = %q, want production", config.ActiveEnvironment)
+	}
+}
+
+func TestResolveEnvironmentChoiceAcceptsNumberAndName(t *testing.T) {
+	environments := []string{"development", "staging", "production"}
+
+	got, err := resolveEnvironmentChoice("2", environments)
+	if err != nil {
+		t.Fatalf("resolveEnvironmentChoice number: %v", err)
+	}
+	if got != "staging" {
+		t.Fatalf("number choice = %q, want staging", got)
+	}
+
+	got, err = resolveEnvironmentChoice("production", environments)
+	if err != nil {
+		t.Fatalf("resolveEnvironmentChoice name: %v", err)
+	}
+	if got != "production" {
+		t.Fatalf("name choice = %q, want production", got)
+	}
+}
+
+func TestWriteInitConfigCreatesGitignoreForProjectConfig(t *testing.T) {
+	withTempWorkingDir(t)
+	initFile = ""
+	t.Cleanup(func() {
+		initFile = ""
+	})
+
+	if err := writeInitConfig("obsecurenv", "development"); err != nil {
+		t.Fatalf("writeInitConfig: %v", err)
+	}
+
+	data, err := os.ReadFile(".gitignore")
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if string(data) != ".obe.json\n" {
+		t.Fatalf(".gitignore = %q, want .obe.json entry", data)
+	}
+}
+
+func TestWriteInitConfigAppendsProjectConfigToGitignore(t *testing.T) {
+	withTempWorkingDir(t)
+	initFile = ""
+	t.Cleanup(func() {
+		initFile = ""
+	})
+	if err := os.WriteFile(".gitignore", []byte(".env"), 0600); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+
+	if err := writeInitConfig("obsecurenv", "development"); err != nil {
+		t.Fatalf("writeInitConfig: %v", err)
+	}
+
+	data, err := os.ReadFile(".gitignore")
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if string(data) != ".env\n.obe.json\n" {
+		t.Fatalf(".gitignore = %q, want appended .obe.json entry", data)
+	}
+}
+
+func TestWriteInitConfigDoesNotDuplicateProjectConfigInGitignore(t *testing.T) {
+	withTempWorkingDir(t)
+	initFile = ""
+	t.Cleanup(func() {
+		initFile = ""
+	})
+	if err := os.WriteFile(".gitignore", []byte(".env\n.obe.json\n"), 0600); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+
+	if err := writeInitConfig("obsecurenv", "development"); err != nil {
+		t.Fatalf("writeInitConfig: %v", err)
+	}
+
+	data, err := os.ReadFile(".gitignore")
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if string(data) != ".env\n.obe.json\n" {
+		t.Fatalf(".gitignore = %q, want unchanged entries", data)
+	}
+}
+
+func TestInitCreatesRemoteProjectWhenSlugIsMissing(t *testing.T) {
+	withTempWorkingDir(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("OBE_API_URL", "")
+
+	var sawCreate bool
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/obsecurenv":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"project not found"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects":
+			sawCreate = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"project-id","slug":"obsecurenv"}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -65,7 +337,7 @@ func TestInitLinksExistingRemoteProjectAfterCreateConflict(t *testing.T) {
 	}
 	initProject = "obsecurenv"
 	initProjectName = "Obsecurenv"
-	initCreateProject = true
+	initCreateProject = false
 	initEnvironment = "production"
 	initFile = ""
 	var out bytes.Buffer
@@ -75,10 +347,10 @@ func TestInitLinksExistingRemoteProjectAfterCreateConflict(t *testing.T) {
 		t.Fatalf("init: %v", err)
 	}
 	if !sawCreate {
-		t.Fatal("expected init to try creating the remote project")
+		t.Fatal("expected init to create the remote project")
 	}
-	if !sawGet {
-		t.Fatal("expected init to verify the existing remote project")
+	if bytes.Contains(out.Bytes(), []byte(`not found`)) {
+		t.Fatalf("output = %q, did not want not-found message", out.String())
 	}
 
 	config, err := loadProjectConfig()
@@ -91,8 +363,61 @@ func TestInitLinksExistingRemoteProjectAfterCreateConflict(t *testing.T) {
 	if config.ActiveEnvironment != "production" {
 		t.Fatalf("ActiveEnvironment = %q, want production", config.ActiveEnvironment)
 	}
-	if !bytes.Contains(out.Bytes(), []byte(`already exists; linked local config`)) {
-		t.Fatalf("output = %q, want link message", out.String())
+}
+
+func TestInitReportsExistingConfigWithoutOverwrite(t *testing.T) {
+	withTempWorkingDir(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("OBE_API_URL", "")
+
+	if err := saveCredentials(Credentials{Token: "test-token", APIURL: "http://obe.test"}); err != nil {
+		t.Fatalf("saveCredentials: %v", err)
+	}
+	if err := saveProjectConfig(ProjectConfig{
+		ProjectSlug:       "linked-app",
+		ActiveEnvironment: "staging",
+		EnvFile:           ".env",
+	}); err != nil {
+		t.Fatalf("saveProjectConfig: %v", err)
+	}
+
+	var sawGet bool
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/projects/linked-app":
+			sawGet = true
+			_, _ = w.Write([]byte(`{"id":"project-id","name":"Linked App","slug":"linked-app"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/projects":
+			t.Fatal("expected init not to create when local config already exists")
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	setupInitCommandClient(t, handler)
+	initProject = "other-app"
+	initEnvironment = "production"
+	var out bytes.Buffer
+	initCmd.SetOut(&out)
+
+	if err := initCmd.RunE(initCmd, nil); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if !sawGet {
+		t.Fatal("expected init to verify existing local config remotely")
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Already initialized.")) || !bytes.Contains(out.Bytes(), []byte("Remote: linked")) {
+		t.Fatalf("output = %q, want already initialized linked status", out.String())
+	}
+
+	config, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("loadProjectConfig: %v", err)
+	}
+	if config.ProjectSlug != "linked-app" || config.ActiveEnvironment != "staging" {
+		t.Fatalf("config overwritten: %+v", config)
 	}
 }
 
@@ -140,6 +465,42 @@ func TestCreateOrLinkProjectUsesCreatedSlug(t *testing.T) {
 	}
 	if resp.Slug != "created-slug" {
 		t.Fatalf("Slug = %q, want created-slug", resp.Slug)
+	}
+}
+
+func setupInitCommandTest(t *testing.T, handler http.Handler) {
+	t.Helper()
+
+	if err := saveCredentials(Credentials{Token: "test-token", APIURL: "http://obe.test"}); err != nil {
+		t.Fatalf("saveCredentials: %v", err)
+	}
+	setupInitCommandClient(t, handler)
+}
+
+func setupInitCommandClient(t *testing.T, handler http.Handler) {
+	t.Helper()
+
+	oldProject := initProject
+	oldProjectName := initProjectName
+	oldCreateProject := initCreateProject
+	oldEnvironment := initEnvironment
+	oldFile := initFile
+	oldNewAPIClient := newAPIClient
+	t.Cleanup(func() {
+		initProject = oldProject
+		initProjectName = oldProjectName
+		initCreateProject = oldCreateProject
+		initEnvironment = oldEnvironment
+		initFile = oldFile
+		newAPIClient = oldNewAPIClient
+		initCmd.SetOut(nil)
+	})
+	newAPIClient = func(baseURL, token string) *api.Client {
+		client := api.New(baseURL, token)
+		client.HTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return responseFromHandler(handler, req), nil
+		})}
+		return client
 	}
 }
 

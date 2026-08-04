@@ -90,23 +90,7 @@ func chooseRemoteEnvironment(cmd *cobra.Command, projectSlug, current string) (s
 	if len(environments) == 0 {
 		return "", fmt.Errorf("no remote environments found for project %q", projectSlug)
 	}
-	out := cmd.OutOrStdout()
-	fmt.Fprintln(out, "Available environments:")
-	for i, environment := range environments {
-		marker := ""
-		if environment == current {
-			marker = " (current)"
-		}
-		fmt.Fprintf(out, "  %d. %s%s\n", i+1, environment, marker)
-	}
-	if !stdinIsTerminal() {
-		return "", fmt.Errorf("environment is required; pass one of the listed environments")
-	}
-	value, err := promptString("Use environment", current)
-	if err != nil {
-		return "", err
-	}
-	return resolveEnvironmentChoice(value, environments)
+	return chooseEnvironmentFromList(cmd, environments, current)
 }
 
 func listRemoteEnvironments(projectSlug string) ([]string, error) {

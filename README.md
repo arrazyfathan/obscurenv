@@ -80,7 +80,7 @@ Script-friendly examples:
 obe login --api-url https://obe.example.com --email you@example.com
 obe login --api-url https://obe.example.com --username yourname
 obe login --token "$TOKEN" --api-url https://obe.example.com
-obe init --project my-app --env development --create
+obe init --project my-app --env development
 obe init --project android-app --env development --file local.properties
 obe push --env development --key "$OBE_PASSPHRASE"
 obe push local.properties --env development --key "$OBE_PASSPHRASE"
@@ -295,6 +295,6 @@ curl -i "$OBE_API_URL/healthz"
 Common fixes:
 
 - `connection refused`: backend, PostgreSQL, `OBE_API_URL`, or `DATABASE_URL` is wrong.
-- `project not found`: run `obe init --create` or create the project on the server.
+- `project not found`: run `obe init` while logged in to link or create the project.
 - `decrypt failed; .env was not modified`: use the same passphrase used for `obe push`.
 - CLI tries `https://localhost:8080`: run `obe login --api-url <url>` or set `OBE_API_URL`.
