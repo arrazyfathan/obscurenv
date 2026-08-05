@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 	"github.com/obscurenv/obscurenv/backend/middleware"
 )
 
@@ -24,13 +26,14 @@ type createProjectRequest struct {
 }
 
 type projectSummary struct {
-	ID               string  `json:"id"`
-	Name             string  `json:"name"`
-	Slug             string  `json:"slug"`
-	CreatedAt        string  `json:"created_at"`
-	EnvironmentCount int     `json:"environment_count"`
-	LatestVersion    *int    `json:"latest_version"`
-	LatestUpdatedAt  *string `json:"latest_updated_at"`
+	ID               string              `json:"id"`
+	Name             string              `json:"name"`
+	Slug             string              `json:"slug"`
+	CreatedAt        string              `json:"created_at"`
+	EnvironmentCount int                 `json:"environment_count"`
+	LatestVersion    *int                `json:"latest_version"`
+	LatestUpdatedAt  *string             `json:"latest_updated_at"`
+	Environments     []environmentSummary `json:"environments,omitempty"`
 }
 
 type environmentSummary struct {
@@ -86,7 +89,65 @@ func (h *ProjectHandler) List(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, "failed to read projects")
 		return
 	}
+
+	if len(projects) > 0 {
+		environmentsByProject, err := h.latestEnvironmentsByProject(c.Request.Context(), projects)
+		if err != nil {
+			errorJSON(c, http.StatusInternalServerError, "failed to list environments")
+			return
+		}
+		for i := range projects {
+			projects[i].Environments = environmentsByProject[projects[i].ID]
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"projects": projects})
+}
+
+func (h *ProjectHandler) latestEnvironmentsByProject(ctx context.Context, projects []projectSummary) (map[string][]environmentSummary, error) {
+	ids := make([]string, 0, len(projects))
+	for _, project := range projects {
+		ids = append(ids, project.ID)
+	}
+
+	rows, err := h.db.QueryContext(ctx, `
+		SELECT project_id, environment_name, version, checksum, created_at
+		FROM (
+			SELECT
+				ev.project_id,
+				ev.environment_name,
+				ev.version,
+				ev.checksum,
+				ev.created_at,
+				ROW_NUMBER() OVER (
+					PARTITION BY ev.project_id, ev.environment_name
+					ORDER BY ev.version DESC
+				) AS row_number
+			FROM env_versions ev
+			WHERE ev.project_id = ANY($1::uuid[])
+		) latest
+		WHERE row_number = 1
+		ORDER BY environment_name
+	`, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	environments := make(map[string][]environmentSummary)
+	for rows.Next() {
+		var projectID string
+		var environment environmentSummary
+		var updatedAt time.Time
+		if err := rows.Scan(&projectID, &environment.Name, &environment.LatestVersion, &environment.Checksum, &updatedAt); err != nil {
+			return nil, err
+		}
+		environment.UpdatedAt = formatTime(updatedAt)
+		environments[projectID] = append(environments[projectID], environment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return environments, nil
 }
 
 func listProjectsQuery(userID, search string) (string, []any) {
@@ -96,7 +157,16 @@ func listProjectsQuery(userID, search string) (string, []any) {
 	search = strings.TrimSpace(search)
 	if search != "" {
 		args = append(args, "%"+escapePostgresLike(search)+"%")
-		where += ` AND (p.name ILIKE $2 ESCAPE '\' OR p.slug ILIKE $2 ESCAPE '\')`
+		where += ` AND (
+			p.name ILIKE $2 ESCAPE '\'
+			OR p.slug ILIKE $2 ESCAPE '\'
+			OR EXISTS (
+				SELECT 1
+				FROM env_versions env
+				WHERE env.project_id = p.id
+					AND env.environment_name ILIKE $2 ESCAPE '\'
+			)
+		)`
 	}
 
 	return `

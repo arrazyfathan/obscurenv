@@ -27,6 +27,28 @@ func TestListProjectsQueryWithSearchFiltersByNameOrSlug(t *testing.T) {
 	}
 }
 
+func TestListProjectsQueryWithSearchAlsoMatchesEnvironmentName(t *testing.T) {
+	query, args := listProjectsQuery("user-1", "staging")
+
+	if !strings.Contains(query, "env.environment_name ILIKE $2") {
+		t.Fatalf("query = %q, want environment name search filter", query)
+	}
+	if len(args) != 2 || args[0] != "user-1" || args[1] != "%staging%" {
+		t.Fatalf("args = %#v, want user id and search pattern", args)
+	}
+}
+
+func TestListProjectsQueryWithSearchMatchesEnvironmentWithoutProjectMatch(t *testing.T) {
+	query, _ := listProjectsQuery("user-1", "staging")
+
+	if !strings.Contains(query, "EXISTS (") {
+		t.Fatalf("query = %q, want EXISTS subquery for environment search", query)
+	}
+	if !strings.Contains(query, "env.project_id = p.id") {
+		t.Fatalf("query = %q, want environment correlated to project", query)
+	}
+}
+
 func TestEscapePostgresLikeEscapesWildcards(t *testing.T) {
 	got := escapePostgresLike(`prod_%\api`)
 	want := `prod\_\%\\api`
