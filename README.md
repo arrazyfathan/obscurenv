@@ -12,20 +12,20 @@ storage and authorization layer for the opaque encrypted payload.
 ```mermaid
 flowchart LR
     subgraph Local[Your machine: obe CLI]
-        File[Plaintext .env or local.properties]
-        Pass[Encryption passphrase<br/>(entered locally)]
-        Salt[Random salt]
-        KDF[Argon2id<br/>derive 256-bit key]
-        Encrypt[AES-256-GCM<br/>encrypt locally]
-        Envelope[Encrypted envelope:<br/>version + KDF + salt + ciphertext]
-        Decrypt[AES-256-GCM<br/>authenticate + decrypt locally]
-        Validate[Decrypt and validate<br/>before writing]
-        Output[Updated local env file]
+        File["Plaintext .env or local.properties"]
+        Pass["Encryption passphrase<br/>(entered locally)"]
+        Salt["Random salt"]
+        KDF["Argon2id<br/>derive 256-bit key"]
+        Encrypt["AES-256-GCM<br/>encrypt locally"]
+        Envelope["Encrypted envelope:<br/>version + KDF + salt + ciphertext"]
+        Decrypt["AES-256-GCM<br/>authenticate + decrypt locally"]
+        Validate["Decrypt and validate<br/>before writing"]
+        Output["Updated local env file"]
     end
 
     subgraph Server[Backend + PostgreSQL]
-        API[HTTPS API<br/>Bearer API token]
-        Store[Opaque encrypted_payload<br/>+ metadata and checksum]
+        API["HTTPS API<br/>Bearer API token"]
+        Store["Opaque encrypted_payload<br/>+ metadata and checksum"]
     end
 
     File -->|obe push| Encrypt
