@@ -4,6 +4,52 @@ Self-hosted, zero-knowledge encrypted `.env` storage.
 
 The CLI encrypts `.env` locally before upload. The backend stores only opaque encrypted payloads and metadata; it never receives plaintext env values, passphrases, derived keys, or raw encryption keys.
 
+## How `.env` Encryption Works
+
+Encryption and decryption happen entirely in the CLI. The backend is only a
+storage and authorization layer for the opaque encrypted payload.
+
+```mermaid
+flowchart LR
+    subgraph Local[Your machine: obe CLI]
+        File[Plaintext .env or local.properties]
+        Pass[Encryption passphrase<br/>(entered locally)]
+        Salt[Random salt]
+        KDF[Argon2id<br/>derive 256-bit key]
+        Encrypt[AES-256-GCM<br/>encrypt locally]
+        Envelope[Encrypted envelope:<br/>version + KDF + salt + ciphertext]
+        Decrypt[AES-256-GCM<br/>authenticate + decrypt locally]
+        Validate[Decrypt and validate<br/>before writing]
+        Output[Updated local env file]
+    end
+
+    subgraph Server[Backend + PostgreSQL]
+        API[HTTPS API<br/>Bearer API token]
+        Store[Opaque encrypted_payload<br/>+ metadata and checksum]
+    end
+
+    File -->|obe push| Encrypt
+    Pass --> KDF
+    Salt --> KDF
+    KDF --> Encrypt
+    Encrypt --> Envelope
+    Envelope -->|encrypted payload only| API
+    API --> Store
+    Store --> API
+    API -->|encrypted payload only| Decrypt
+    Pass --> KDF
+    KDF --> Decrypt
+    Decrypt --> Validate
+    Validate -->|success| Output
+```
+
+Push and pull behavior:
+
+- `obe push` reads the local file, derives a key with Argon2id using a fresh random salt, encrypts with AES-256-GCM, and uploads the envelope.
+- `obe pull` downloads the envelope, derives the key locally from the supplied passphrase and stored salt, then authenticates and decrypts it locally.
+- The existing local file is replaced only after decryption succeeds; a wrong passphrase or invalid payload leaves it unchanged.
+- Passphrases, derived keys, raw keys, and plaintext values are never sent to or stored by the backend. API credentials are separate from the encryption passphrase.
+
 ## Components
 
 - `backend/`: Go REST API using Gin and PostgreSQL.
