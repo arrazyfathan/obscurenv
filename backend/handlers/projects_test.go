@@ -1,8 +1,12 @@
 package handlers
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestListProjectsQueryWithoutSearchListsUserProjects(t *testing.T) {
@@ -56,4 +60,68 @@ func TestEscapePostgresLikeEscapesWildcards(t *testing.T) {
 	if got != want {
 		t.Fatalf("escapePostgresLike() = %q, want %q", got, want)
 	}
+}
+
+func TestRenameProjectRejectsInvalidName(t *testing.T) {
+	router := newRenameTestRouter()
+
+	for name, body := range map[string]string{
+		"missing":    `{}`,
+		"empty":      `{"name":""}`,
+		"whitespace": `{"name":"   "}`,
+	} {
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/my-app", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("Rename (%s) returned %d, want %d", name, rec.Code, http.StatusBadRequest)
+		}
+	}
+}
+
+func TestRenameProjectRejectsOverlongName(t *testing.T) {
+	router := newRenameTestRouter()
+
+	body := `{"name":"` + strings.Repeat("a", 101) + `"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/my-app", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Rename returned %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestRenameProjectRequiresAuthenticatedUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handler := NewProjectHandler(nil)
+	router.PATCH("/api/v1/projects/:slug", handler.Rename)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/my-app", strings.NewReader(`{"name":"My App"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("Rename returned %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func newRenameTestRouter() *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handler := NewProjectHandler(nil)
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
+	router.PATCH("/api/v1/projects/:slug", handler.Rename)
+	return router
 }

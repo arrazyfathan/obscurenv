@@ -211,6 +211,65 @@ func (h *EnvHandler) Versions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"versions": versions})
 }
 
+type envExportItem struct {
+	Environment      string `json:"environment"`
+	Version          int    `json:"version"`
+	Checksum         string `json:"checksum"`
+	EncryptedPayload string `json:"encrypted_payload"`
+	CreatedAt        string `json:"created_at"`
+}
+
+func (h *EnvHandler) Export(c *gin.Context) {
+	projectSlug := c.Query("project")
+	if projectSlug == "" {
+		badRequest(c, "project is required")
+		return
+	}
+
+	rows, err := h.db.QueryContext(c.Request.Context(), `
+		SELECT ev.environment_name, ev.version, ev.checksum, ev.encrypted_payload, ev.created_at
+		FROM (
+			SELECT
+				ev.environment_name,
+				ev.version,
+				ev.checksum,
+				ev.encrypted_payload,
+				ev.created_at,
+				ROW_NUMBER() OVER (
+					PARTITION BY ev.environment_name
+					ORDER BY ev.version DESC
+				) AS row_number
+			FROM env_versions ev
+			JOIN projects p ON p.id = ev.project_id
+			WHERE p.user_id = $1 AND p.slug = $2
+		) latest
+		WHERE row_number = 1
+		ORDER BY environment_name
+	`, middleware.UserID(c), projectSlug)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to export environments")
+		return
+	}
+	defer rows.Close()
+
+	environments := make([]envExportItem, 0)
+	for rows.Next() {
+		var item envExportItem
+		var createdAt time.Time
+		if err := rows.Scan(&item.Environment, &item.Version, &item.Checksum, &item.EncryptedPayload, &createdAt); err != nil {
+			errorJSON(c, http.StatusInternalServerError, "failed to read environments")
+			return
+		}
+		item.CreatedAt = formatTime(createdAt)
+		environments = append(environments, item)
+	}
+	if err := rows.Err(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to read environments")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"project_slug": projectSlug, "environments": environments})
+}
+
 func (h *EnvHandler) Delete(c *gin.Context) {
 	projectSlug := c.Query("project")
 	environment := c.Query("environment")

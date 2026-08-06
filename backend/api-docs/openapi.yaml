@@ -327,6 +327,41 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+    patch:
+      tags: [Projects]
+      security: [{ bearerAuth: [] }]
+      summary: Update a project name
+      description: Renames a project. The slug is immutable and stays the same.
+      operationId: renameProject
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+          description: Project slug
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProjectNameRequest' }
+            example: { name: My App (renamed) }
+      responses:
+        '200':
+          description: Project renamed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  name: { type: string }
+                  slug: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
     delete:
       tags: [Projects]
       security: [{ bearerAuth: [] }]
@@ -472,6 +507,34 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/EnvVersionMeta' }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /api/v1/env/export:
+    get:
+      tags: [Environments]
+      security: [{ bearerAuth: [] }]
+      summary: Export the latest version of every environment in a project
+      description: |
+        Returns the opaque `encrypted_payload` of the latest version for each
+        environment. The backend never decrypts or inspects the payloads.
+      operationId: exportEnv
+      parameters:
+        - name: project
+          in: query
+          required: true
+          schema: { type: string }
+          description: Project slug
+      responses:
+        '200':
+          description: Latest environment versions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_slug: { type: string }
+                  environments:
+                    type: array
+                    items: { $ref: '#/components/schemas/EnvExportItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /api/v1/env:
     delete:
       tags: [Environments]
@@ -552,6 +615,128 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/user/password:
+    post:
+      tags: [User]
+      security: [{ bearerAuth: [] }]
+      summary: Change the current user's password
+      description: |
+        Verifies the current password before replacing it. Existing API tokens
+        remain valid after a password change.
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '200':
+          description: Password updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: password updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/user:
+    delete:
+      tags: [User]
+      security: [{ bearerAuth: [] }]
+      summary: Delete the current user's account
+      description: |
+        Permanently deletes the account, its projects, environments, tokens,
+        and activity logs. Requires an explicit `confirm: true`.
+      operationId: deleteAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeleteAccountRequest' }
+      responses:
+        '200':
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: account deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/tokens:
+    get:
+      tags: [Tokens]
+      security: [{ bearerAuth: [] }]
+      summary: List API tokens
+      operationId: listTokens
+      responses:
+        '200':
+          description: Tokens owned by the authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items: { $ref: '#/components/schemas/TokenSummary' }
+    post:
+      tags: [Tokens]
+      security: [{ bearerAuth: [] }]
+      summary: Create an API token
+      description: |
+        Mints a new token authenticated by an existing token, enabling
+        rotation and scoped access. The raw token is returned once.
+      operationId: createToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTokenRequest' }
+            example: { name: ci, expires_in_days: 30 }
+      responses:
+        '201':
+          description: Token created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateTokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /api/v1/tokens/{id}:
+    delete:
+      tags: [Tokens]
+      security: [{ bearerAuth: [] }]
+      summary: Revoke an API token
+      operationId: revokeToken
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Token UUID
+      responses:
+        '200':
+          description: Token revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: token revoked }
+        '404':
+          description: Token not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
   /api/v1/activity:
     get:
       tags: [Activity]
@@ -562,8 +747,9 @@ paths:
         first. Scoped to the authenticated user. This endpoint is API-only;
         the CLI has no activity command yet.
 
-        Actions: `project.created`, `project.deleted`, `env.pushed`,
-        `env.deleted`. Metadata for `env.pushed` includes the stored `version`.
+        Actions: `project.created`, `project.deleted`, `project.renamed`,
+        `env.pushed`, `env.deleted`. Metadata for `env.pushed` includes the
+        stored `version`.
       operationId: listActivity
       parameters:
         - name: limit
@@ -575,7 +761,14 @@ paths:
           in: query
           required: false
           schema: { type: integer, minimum: 0, default: 0 }
-          description: Number of activities to skip
+          description: Number of activities to skip (alternative to `cursor`)
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+          description: |
+            Opaque keyset cursor returned as `next_cursor`. Use it to fetch the
+            next page. Prefer over `offset` for stable pagination.
         - name: project
           in: query
           required: false
@@ -584,8 +777,18 @@ paths:
         - name: action
           in: query
           required: false
-          schema: { type: string, enum: [project.created, project.deleted, env.pushed, env.deleted] }
+          schema: { type: string, enum: [project.created, project.deleted, project.renamed, env.pushed, env.deleted] }
           description: Filter by action
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: Only activities created at or after this RFC3339 timestamp
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: Only activities created at or before this RFC3339 timestamp
       responses:
         '200':
           description: Activity feed and total count
@@ -601,6 +804,9 @@ paths:
                   total:
                     type: integer
                     description: Total matching activities (unaffected by limit/offset)
+                  next_cursor:
+                    type: string
+                    description: Cursor for the next page, present when more results exist
         '400': { $ref: '#/components/responses/BadRequest' }
 components:
   securitySchemes:
@@ -647,6 +853,10 @@ components:
         username: { type: string }
         password: { type: string }
         token_name: { type: string, example: cli }
+        expires_in_days:
+          type: integer
+          minimum: 1
+          description: Number of days until the minted token expires
     PasskeyOptionsResponse:
       type: object
       required: [ceremony_id, options]
@@ -676,6 +886,11 @@ components:
       properties:
         id: { type: string, format: uuid }
         slug: { type: string }
+    UpdateProjectNameRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100, example: My App }
     EnvironmentSummary:
       type: object
       properties:
@@ -754,6 +969,53 @@ components:
         version: { type: integer }
         checksum: { type: string }
         created_at: { type: string, format: date-time }
+    EnvExportItem:
+      type: object
+      properties:
+        environment: { type: string }
+        version: { type: integer }
+        checksum: { type: string }
+        encrypted_payload:
+          type: string
+          description: Opaque encrypted envelope; decrypt locally in the CLI
+        created_at: { type: string, format: date-time }
+    TokenSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+    CreateTokenRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, example: ci }
+        expires_in_days:
+          type: integer
+          minimum: 1
+          description: Number of days until the token expires
+    CreateTokenResponse:
+      type: object
+      properties:
+        token: { type: string, description: Raw token; shown only once }
+        id: { type: string, format: uuid }
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, format: password }
+        new_password: { type: string, format: password, minLength: 8 }
+    DeleteAccountRequest:
+      type: object
+      required: [confirm]
+      properties:
+        confirm: { type: boolean, description: Must be true to delete the account }
     UserProfile:
       type: object
       properties:
@@ -768,7 +1030,7 @@ components:
         id: { type: string, format: uuid }
         action:
           type: string
-          enum: [project.created, project.deleted, env.pushed, env.deleted]
+          enum: [project.created, project.deleted, project.renamed, env.pushed, env.deleted]
         project_slug:
           type: [string, 'null']
           description: Denormalized so the trail survives project deletion

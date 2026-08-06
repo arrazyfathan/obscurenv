@@ -3,6 +3,11 @@
 Interactive reference: run the backend and open `http://localhost:8080/docs`.
 Raw OpenAPI spec: `backend/api-docs/openapi.yaml` (source of truth).
 
+> Building a web dashboard or other client? See
+> [`web-client-changes.md`](web-client-changes.md) for what the client side
+> must implement (tokens, account settings, project rename, export, activity
+> pagination).
+
 ## Base URL
 
 The backend defaults to `http://localhost:8080` (port from `PORT` or `ADDR`).

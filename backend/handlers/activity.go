@@ -3,7 +3,9 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,6 +17,7 @@ import (
 const (
 	ActionProjectCreated = "project.created"
 	ActionProjectDeleted = "project.deleted"
+	ActionProjectRenamed = "project.renamed"
 	ActionEnvPushed      = "env.pushed"
 	ActionEnvDeleted     = "env.deleted"
 )
@@ -22,6 +25,7 @@ const (
 var activityActions = map[string]bool{
 	ActionProjectCreated: true,
 	ActionProjectDeleted: true,
+	ActionProjectRenamed: true,
 	ActionEnvPushed:      true,
 	ActionEnvDeleted:     true,
 }
@@ -48,7 +52,7 @@ func recordActivity(ctx context.Context, db activityExecer, userID, projectID, a
 
 type ActivityHandler struct {
 	db   *sql.DB
-	list func(context.Context, string, activityFilter) ([]activityItem, int, error)
+	list func(context.Context, string, activityFilter) ([]activityItem, int, string, error)
 }
 
 func NewActivityHandler(database *sql.DB) *ActivityHandler {
@@ -67,10 +71,17 @@ type activityItem struct {
 }
 
 type activityFilter struct {
-	ProjectSlug string
-	Action      string
-	Limit       int
-	Offset      int
+	ProjectSlug    string
+	Action         string
+	Limit          int
+	Offset         int
+	From           time.Time
+	To             time.Time
+	HasFrom        bool
+	HasTo          bool
+	BeforeID       string
+	BeforeCreatedAt time.Time
+	HasBefore      bool
 }
 
 func (h *ActivityHandler) List(c *gin.Context) {
@@ -78,12 +89,16 @@ func (h *ActivityHandler) List(c *gin.Context) {
 	if !ok {
 		return
 	}
-	activities, total, err := h.list(c.Request.Context(), middleware.UserID(c), filter)
+	activities, total, nextCursor, err := h.list(c.Request.Context(), middleware.UserID(c), filter)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to list activity")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"activities": activities, "total": total})
+	resp := gin.H{"activities": activities, "total": total}
+	if nextCursor != "" {
+		resp["next_cursor"] = nextCursor
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func parseActivityFilter(c *gin.Context) (activityFilter, bool) {
@@ -109,6 +124,34 @@ func parseActivityFilter(c *gin.Context) (activityFilter, bool) {
 		}
 		filter.Offset = value
 	}
+	if from := c.Query("from"); from != "" {
+		value, err := time.Parse(time.RFC3339, from)
+		if err != nil {
+			badRequest(c, "from must be an RFC3339 timestamp")
+			return filter, false
+		}
+		filter.From = value
+		filter.HasFrom = true
+	}
+	if to := c.Query("to"); to != "" {
+		value, err := time.Parse(time.RFC3339, to)
+		if err != nil {
+			badRequest(c, "to must be an RFC3339 timestamp")
+			return filter, false
+		}
+		filter.To = value
+		filter.HasTo = true
+	}
+	if cursor := c.Query("cursor"); cursor != "" {
+		cursor, err := decodeActivityCursor(cursor)
+		if err != nil {
+			badRequest(c, "invalid cursor")
+			return filter, false
+		}
+		filter.BeforeID = cursor.ID
+		filter.BeforeCreatedAt = cursor.CreatedAt
+		filter.HasBefore = true
+	}
 	if filter.Action != "" && !activityActions[filter.Action] {
 		badRequest(c, "unknown action")
 		return filter, false
@@ -116,46 +159,90 @@ func parseActivityFilter(c *gin.Context) (activityFilter, bool) {
 	return filter, true
 }
 
-func (h *ActivityHandler) listFromDB(ctx context.Context, userID string, filter activityFilter) ([]activityItem, int, error) {
-	query, args := listActivityQuery(userID, filter)
+type activityCursor struct {
+	CreatedAt time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+}
+
+func encodeActivityCursor(createdAt time.Time, id string) string {
+	data, _ := json.Marshal(activityCursor{CreatedAt: createdAt, ID: id})
+	return base64.RawURLEncoding.EncodeToString(data)
+}
+
+func decodeActivityCursor(encoded string) (activityCursor, error) {
+	var cursor activityCursor
+	data, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return cursor, err
+	}
+	if err := json.Unmarshal(data, &cursor); err != nil {
+		return cursor, err
+	}
+	if cursor.CreatedAt.IsZero() || cursor.ID == "" {
+		return cursor, errors.New("incomplete cursor")
+	}
+	return cursor, nil
+}
+
+func (h *ActivityHandler) listFromDB(ctx context.Context, userID string, filter activityFilter) ([]activityItem, int, string, error) {
+	fetchLimit := filter.Limit
+	if filter.HasBefore {
+		fetchLimit = filter.Limit + 1
+	}
+	query, args := listActivityQuery(userID, filter, fetchLimit)
 	rows, err := h.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 	defer rows.Close()
 
-	activities := make([]activityItem, 0)
+	type rowWithTime struct {
+		item      activityItem
+		createdAt time.Time
+	}
+	rowsWithTime := make([]rowWithTime, 0)
 	for rows.Next() {
-		var item activityItem
+		var row rowWithTime
 		var projectSlug sql.NullString
 		var environmentName sql.NullString
 		var metadata []byte
-		var createdAt time.Time
-		if err := rows.Scan(&item.ID, &item.Action, &projectSlug, &environmentName, &metadata, &createdAt); err != nil {
-			return nil, 0, err
+		if err := rows.Scan(&row.item.ID, &row.item.Action, &projectSlug, &environmentName, &metadata, &row.createdAt); err != nil {
+			return nil, 0, "", err
 		}
 		if projectSlug.Valid {
-			item.ProjectSlug = &projectSlug.String
+			row.item.ProjectSlug = &projectSlug.String
 		}
 		if environmentName.Valid {
-			item.EnvironmentName = &environmentName.String
+			row.item.EnvironmentName = &environmentName.String
 		}
 		if len(metadata) > 0 {
-			item.Metadata = json.RawMessage(metadata)
+			row.item.Metadata = json.RawMessage(metadata)
 		}
-		item.CreatedAt = formatTime(createdAt)
-		activities = append(activities, item)
+		row.item.CreatedAt = formatTime(row.createdAt)
+		rowsWithTime = append(rowsWithTime, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
+	}
+
+	nextCursor := ""
+	if len(rowsWithTime) > filter.Limit {
+		last := rowsWithTime[filter.Limit-1]
+		nextCursor = encodeActivityCursor(last.createdAt, last.item.ID)
+		rowsWithTime = rowsWithTime[:filter.Limit]
+	}
+
+	activities := make([]activityItem, 0, len(rowsWithTime))
+	for _, row := range rowsWithTime {
+		activities = append(activities, row.item)
 	}
 
 	countQuery, countArgs := countActivityQuery(userID, filter)
 	var total int
 	if err := h.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
-	return activities, total, nil
+	return activities, total, nextCursor, nil
 }
 
 func activityWhereClause(userID string, filter activityFilter) (string, []any) {
@@ -169,10 +256,24 @@ func activityWhereClause(userID string, filter activityFilter) (string, []any) {
 		args = append(args, filter.Action)
 		where += " AND al.action = $" + strconv.Itoa(len(args))
 	}
+	if filter.HasFrom {
+		args = append(args, filter.From)
+		where += " AND al.created_at >= $" + strconv.Itoa(len(args))
+	}
+	if filter.HasTo {
+		args = append(args, filter.To)
+		where += " AND al.created_at <= $" + strconv.Itoa(len(args))
+	}
+	if filter.HasBefore {
+		createdAtArg := len(args) + 1
+		idArg := len(args) + 2
+		args = append(args, filter.BeforeCreatedAt, filter.BeforeID)
+		where += " AND (al.created_at < $" + strconv.Itoa(createdAtArg) + " OR (al.created_at = $" + strconv.Itoa(createdAtArg) + " AND al.id < $" + strconv.Itoa(idArg) + "))"
+	}
 	return where, args
 }
 
-func listActivityQuery(userID string, filter activityFilter) (string, []any) {
+func listActivityQuery(userID string, filter activityFilter, fetchLimit int) (string, []any) {
 	where, args := activityWhereClause(userID, filter)
 	query := `
 		SELECT al.id, al.action, al.project_slug, al.environment_name, al.metadata, al.created_at
@@ -180,7 +281,7 @@ func listActivityQuery(userID string, filter activityFilter) (string, []any) {
 		` + where + `
 		ORDER BY al.created_at DESC, al.id DESC
 		LIMIT $` + strconv.Itoa(len(args)+1) + ` OFFSET $` + strconv.Itoa(len(args)+2)
-	args = append(args, filter.Limit, filter.Offset)
+	args = append(args, fetchLimit, filter.Offset)
 	return query, args
 }
 

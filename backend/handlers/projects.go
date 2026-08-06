@@ -25,6 +25,10 @@ type createProjectRequest struct {
 	Slug string `json:"slug" binding:"required"`
 }
 
+type updateProjectNameRequest struct {
+	Name string `json:"name" binding:"required"`
+}
+
 type projectSummary struct {
 	ID               string              `json:"id"`
 	Name             string              `json:"name"`
@@ -287,6 +291,54 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 		"latest_updated_at": project.LatestUpdatedAt,
 		"environments":      environments,
 	})
+}
+
+func (h *ProjectHandler) Rename(c *gin.Context) {
+	userID := middleware.UserID(c)
+	if userID == "" {
+		errorJSON(c, http.StatusUnauthorized, "missing authenticated user")
+		return
+	}
+	slug := c.Param("slug")
+
+	var req updateProjectNameRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "invalid project request")
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" || len(name) > 100 {
+		badRequest(c, "invalid project name")
+		return
+	}
+
+	tx, err := h.db.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback()
+
+	var project projectSummary
+	err = tx.QueryRowContext(c.Request.Context(), `
+		UPDATE projects
+		SET name = $3
+		WHERE user_id = $1 AND slug = $2
+		RETURNING id, name, slug
+	`, userID, slug, name).Scan(&project.ID, &project.Name, &project.Slug)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, "project not found")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, userID, project.ID, ActionProjectRenamed, slug, "", gin.H{"name": name}); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to update project")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": project.ID, "name": project.Name, "slug": project.Slug})
 }
 
 func (h *ProjectHandler) Delete(c *gin.Context) {

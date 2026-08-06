@@ -48,3 +48,22 @@ func TestDeleteEnvironmentRequiresProjectAndEnvironment(t *testing.T) {
 		t.Fatalf("Delete body = %q, want missing parameter error", rec.Body.String())
 	}
 }
+
+func TestExportRequiresProject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handler := NewEnvHandler(nil)
+	router.GET("/api/v1/env/export", handler.Export)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/env/export", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Export returned %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "project is required") {
+		t.Fatalf("Export body = %q, want missing project error", rec.Body.String())
+	}
+}

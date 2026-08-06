@@ -54,6 +54,10 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(envCmd)
 	rootCmd.AddCommand(projectCmd)
+	rootCmd.AddCommand(tokenCmd)
+	rootCmd.AddCommand(passwdCmd)
+	rootCmd.AddCommand(accountCmd)
+	rootCmd.AddCommand(exportCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(versionCmd)
 }
