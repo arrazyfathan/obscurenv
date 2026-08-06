@@ -44,7 +44,7 @@ var projectRenameCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Renamed project %q to %q.\n", project.Slug, project.Name)
+		success(cmd.OutOrStdout(), fmt.Sprintf("Renamed project %q to %q.", project.Slug, project.Name))
 		return nil
 	},
 }
@@ -69,7 +69,7 @@ var projectDeleteCmd = &cobra.Command{
 		if err := client.DeleteProject(slug); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Deleted remote project %q.\n", slug)
+		success(cmd.OutOrStdout(), fmt.Sprintf("Deleted remote project %q.", slug))
 		return nil
 	},
 }

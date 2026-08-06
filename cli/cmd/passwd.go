@@ -31,7 +31,7 @@ var passwdCmd = &cobra.Command{
 		if err := client.ChangePassword(current, newPassword); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "Password updated.")
+		success(cmd.OutOrStdout(), "Password updated.")
 		return nil
 	},
 }

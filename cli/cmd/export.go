@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/obscurenv/obscurenv/cli/pkg/api"
 	obecrypto "github.com/obscurenv/obscurenv/cli/pkg/crypto"
 	"github.com/spf13/cobra"
 )
@@ -34,8 +35,12 @@ var exportCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		resp, err := client.Export(slug)
-		if err != nil {
+		var resp *api.ExportResponse
+		if err := withSpinner(cmd.OutOrStdout(), "Exporting "+slug, func() error {
+			var eerr error
+			resp, eerr = client.Export(slug)
+			return eerr
+		}); err != nil {
 			return err
 		}
 		if len(resp.Environments) == 0 {
@@ -72,7 +77,7 @@ var exportCmd = &cobra.Command{
 				_ = os.Remove(tmp)
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Exported %q into %s.\n", env.environment, env.file)
+			success(cmd.OutOrStdout(), fmt.Sprintf("Exported %q into %s.", env.environment, env.file))
 		}
 		return nil
 	},

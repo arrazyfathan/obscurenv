@@ -33,11 +33,15 @@ var pushCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		version, err := pushEnvironment(environment, passphrase, file)
-		if err != nil {
+		var version int
+		if err := withSpinner(cmd.OutOrStdout(), "Pushing "+environment, func() error {
+			var perr error
+			version, perr = pushEnvironment(environment, passphrase, file)
+			return perr
+		}); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Pushed %q from %s as version %d.\n", environment, file, version)
+		success(cmd.OutOrStdout(), fmt.Sprintf("Pushed %q from %s as version %d.", environment, file, version))
 		return nil
 	},
 }

@@ -27,13 +27,15 @@ var tokenListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		rows := make([][]string, 0, len(tokens))
 		for _, token := range tokens {
 			expiry := "never"
 			if token.ExpiresAt != nil {
 				expiry = *token.ExpiresAt
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s  %s  created %s  expires %s\n", token.ID, token.Name, token.CreatedAt, expiry)
+			rows = append(rows, []string{token.ID, token.Name, token.CreatedAt, expiry})
 		}
+		printTable(cmd.OutOrStdout(), []string{"ID", "Name", "Created", "Expires"}, rows)
 		return nil
 	},
 }
@@ -77,7 +79,7 @@ var tokenRmCmd = &cobra.Command{
 		if err := client.RevokeToken(args[0]); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Revoked token %q.\n", args[0])
+		success(cmd.OutOrStdout(), fmt.Sprintf("Revoked token %q.", args[0]))
 		return nil
 	},
 }

@@ -19,44 +19,54 @@ var statusCmd = &cobra.Command{
 		config, configErr := readProjectConfigIfPresent()
 		credentials, credentialsErr := readCredentialsIfPresent()
 
+		rows := make([][]string, 0, 6)
 		if configErr != nil {
-			fmt.Fprintf(out, "Project: not initialized (%v)\n", configErr)
+			rows = append(rows, []string{"Project", "not initialized (" + configErr.Error() + ")"})
 		} else {
-			fmt.Fprintf(out, "Project: %s\n", config.ProjectSlug)
-			fmt.Fprintf(out, "Active env: %s\n", resolveEnvironment("", config))
+			rows = append(rows, []string{"Project", config.ProjectSlug})
+			rows = append(rows, []string{"Active env", resolveEnvironment("", config)})
+			if config.EnvFile != "" {
+				rows = append(rows, []string{"Managed file", config.EnvFile})
+			}
 		}
 
 		apiURL := apiBaseURL()
 		if os.Getenv("OBE_API_URL") == "" && credentials != nil && credentials.APIURL != "" {
 			apiURL = credentials.APIURL
 		}
-		fmt.Fprintf(out, "API: %s\n", apiURL)
+		rows = append(rows, []string{"API", apiURL})
 
 		if credentialsErr != nil {
-			fmt.Fprintf(out, "Logged in: no (%v)\n", credentialsErr)
+			rows = append(rows, []string{"Logged in", "no (" + credentialsErr.Error() + ")"})
+			printTable(out, []string{"Key", "Value"}, rows)
 			return nil
 		}
-		fmt.Fprintln(out, "Logged in: yes")
+		rows = append(rows, []string{"Logged in", "yes"})
 
 		if configErr != nil {
+			printTable(out, []string{"Key", "Value"}, rows)
 			return nil
 		}
 
 		client, err := loadClient()
 		if err != nil {
-			fmt.Fprintf(out, "Remote envs: unavailable (%v)\n", err)
+			rows = append(rows, []string{"Remote envs", "unavailable (" + err.Error() + ")"})
+			printTable(out, []string{"Key", "Value"}, rows)
 			return nil
 		}
 		resp, err := client.List(config.ProjectSlug)
 		if err != nil {
-			fmt.Fprintf(out, "Remote envs: unavailable (%v)\n", err)
+			rows = append(rows, []string{"Remote envs", "unavailable (" + err.Error() + ")"})
+			printTable(out, []string{"Key", "Value"}, rows)
 			return nil
 		}
 		if len(resp.Environments) == 0 {
-			fmt.Fprintln(out, "Remote envs: none")
+			rows = append(rows, []string{"Remote envs", "none"})
+			printTable(out, []string{"Key", "Value"}, rows)
 			return nil
 		}
-		fmt.Fprintf(out, "Remote envs: %s\n", strings.Join(resp.Environments, ", "))
+		rows = append(rows, []string{"Remote envs", strings.Join(resp.Environments, ", ")})
+		printTable(out, []string{"Key", "Value"}, rows)
 		return nil
 	},
 }

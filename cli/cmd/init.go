@@ -36,8 +36,12 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		linked, err := linkExistingProject(client, project)
-		if err != nil {
+		var linked *api.ProjectResponse
+		if err := withSpinner(cmd.OutOrStdout(), "Checking project "+project, func() error {
+			var lerr error
+			linked, lerr = linkExistingProject(client, project)
+			return lerr
+		}); err != nil {
 			if !api.IsStatus(err, http.StatusNotFound) {
 				return fmt.Errorf("check project: %w", err)
 			}
@@ -50,8 +54,8 @@ var initCmd = &cobra.Command{
 			if err := writeInitConfig(linked.Slug, environment); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Linked local config to remote project %q.\n", linked.Slug)
-			fmt.Fprintf(cmd.OutOrStdout(), "Created %s for project %q using %q.\n", projectConfigFile, linked.Slug, environment)
+			success(cmd.OutOrStdout(), fmt.Sprintf("Linked local config to remote project %q.", linked.Slug))
+			success(cmd.OutOrStdout(), fmt.Sprintf("Created %s for project %q using %q.", projectConfigFile, linked.Slug, environment))
 			return nil
 		}
 
@@ -65,27 +69,32 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		resp, created, err := createOrLinkProject(client, api.CreateProjectRequest{Name: name, Slug: project})
-		if err != nil {
+		var resp *api.CreateProjectResponse
+		var created bool
+		if err := withSpinner(cmd.OutOrStdout(), "Setting up project "+project, func() error {
+			var cerr error
+			resp, created, cerr = createOrLinkProject(client, api.CreateProjectRequest{Name: name, Slug: project})
+			return cerr
+		}); err != nil {
 			return fmt.Errorf("create project: %w", err)
 		}
 		project = resp.Slug
 		if created {
-			fmt.Fprintf(cmd.OutOrStdout(), "Created remote project %q.\n", project)
+			success(cmd.OutOrStdout(), fmt.Sprintf("Created remote project %q.", project))
 		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "Remote project %q already exists; linked local config.\n", project)
+			info(cmd.OutOrStdout(), fmt.Sprintf("Remote project %q already exists; linked local config.", project))
 		}
 		if err := writeInitConfig(project, environment); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Created %s for project %q using %q.\n", projectConfigFile, project, environment)
+		success(cmd.OutOrStdout(), fmt.Sprintf("Created %s for project %q using %q.", projectConfigFile, project, environment))
 		return nil
 	},
 }
 
 func reportExistingInit(cmd *cobra.Command, config *ProjectConfig) error {
 	out := cmd.OutOrStdout()
-	fmt.Fprintln(out, "Already initialized.")
+	info(out, "Already initialized.")
 	fmt.Fprintf(out, "Project: %s\n", config.ProjectSlug)
 	fmt.Fprintf(out, "Active env: %s\n", resolveEnvironment("", config))
 	if config.EnvFile != "" {
@@ -132,6 +141,9 @@ func chooseLinkedProjectEnvironment(cmd *cobra.Command, client *api.Client, proj
 }
 
 func chooseEnvironmentFromList(cmd *cobra.Command, environments []string, current string) (string, error) {
+	if interactive() {
+		return interactiveSelect("Select an environment", environments, current)
+	}
 	out := cmd.OutOrStdout()
 	fmt.Fprintln(out, "Available environments:")
 	for i, environment := range environments {

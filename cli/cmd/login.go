@@ -53,22 +53,28 @@ var loginCmd = &cobra.Command{
 			}
 			client := api.New(apiURL, "")
 			if loginRegister {
-				if err := client.Register(api.RegisterRequest{
-					Email:    email,
-					Username: username,
-					Password: password,
+				if err := withSpinner(cmd.OutOrStdout(), "Registering user", func() error {
+					return client.Register(api.RegisterRequest{
+						Email:    email,
+						Username: username,
+						Password: password,
+					})
 				}); err != nil {
 					return fmt.Errorf("register user: %w", err)
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), "Registered user.")
+				success(cmd.OutOrStdout(), "Registered user.")
 			}
-			resp, err := client.Login(api.LoginRequest{
-				Email:     email,
-				Username:  username,
-				Password:  password,
-				TokenName: tokenName,
-			})
-			if err != nil {
+			var resp *api.LoginResponse
+			if err := withSpinner(cmd.OutOrStdout(), "Logging in", func() error {
+				var lerr error
+				resp, lerr = client.Login(api.LoginRequest{
+					Email:     email,
+					Username:  username,
+					Password:  password,
+					TokenName: tokenName,
+				})
+				return lerr
+			}); err != nil {
 				return fmt.Errorf("login: %w", err)
 			}
 			token = resp.Token
@@ -76,7 +82,7 @@ var loginCmd = &cobra.Command{
 		if err := saveCredentials(Credentials{Token: token, APIURL: apiURL}); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "Logged in. Credentials saved.")
+		success(cmd.OutOrStdout(), "Logged in. Credentials saved.")
 		return nil
 	},
 }

@@ -30,21 +30,31 @@ type Credentials struct {
 }
 
 var rootCmd = &cobra.Command{
-	Use:     "obe",
-	Short:   "Zero-knowledge encrypted .env cloud storage",
-	Version: normalizeVersion(version),
+	Use:           "obe",
+	Short:         "Zero-knowledge encrypted .env cloud storage",
+	Version:       normalizeVersion(version),
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	Run: func(cmd *cobra.Command, args []string) {
+		out := cmd.OutOrStdout()
+		accent(out, "obe — zero-knowledge encrypted .env cloud storage")
+		dim(out, "Encrypt locally. Sync remotely. No one else can read it.")
+		fmt.Fprintln(out)
+		_ = cmd.Help()
+	},
 }
 
 var newAPIClient = api.New
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fail(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
 
 func init() {
+	rootCmd.PersistentFlags().BoolVar(&noColorFlag, "no-color", false, "Disable colored output")
 	rootCmd.SetVersionTemplate(FormatVersion(versionInfo()))
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(initCmd)

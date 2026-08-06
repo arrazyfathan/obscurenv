@@ -63,9 +63,12 @@ func runUse(cmd *cobra.Command, target string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Switching environment to %q...\n", target)
+	info(cmd.OutOrStdout(), fmt.Sprintf("Switching environment to %q...", target))
 	if usePushCurrent {
-		if _, err := pushEnvironment(current, passphrase, file); err != nil {
+		if err := withSpinner(cmd.OutOrStdout(), "Pushing "+current, func() error {
+			_, perr := pushEnvironment(current, passphrase, file)
+			return perr
+		}); err != nil {
 			return fmt.Errorf("push current environment %q: %w", current, err)
 		}
 	}
@@ -73,12 +76,15 @@ func runUse(cmd *cobra.Command, target string) error {
 	if err := saveProjectConfig(*config); err != nil {
 		return err
 	}
-	if _, err := pullEnvironment(target, passphrase, file, true); err != nil {
+	if err := withSpinner(cmd.OutOrStdout(), "Pulling "+target, func() error {
+		_, perr := pullEnvironment(target, passphrase, file, true)
+		return perr
+	}); err != nil {
 		config.ActiveEnvironment = current
 		_ = saveProjectConfig(*config)
 		return fmt.Errorf("pull target environment %q: %w", target, err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Local %s now uses %q.\n", file, target)
+	success(cmd.OutOrStdout(), fmt.Sprintf("Local %s now uses %q.", file, target))
 	return nil
 }
 

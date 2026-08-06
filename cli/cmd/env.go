@@ -49,7 +49,7 @@ var envUseCmd = &cobra.Command{
 		if err := saveProjectConfig(*config); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Active environment set to %q.\n", config.ActiveEnvironment)
+		success(cmd.OutOrStdout(), fmt.Sprintf("Active environment set to %q.", config.ActiveEnvironment))
 		return nil
 	},
 }
@@ -75,7 +75,7 @@ var envDeleteCmd = &cobra.Command{
 		if err := client.DeleteEnvironment(config.ProjectSlug, environment); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Deleted remote environment %q from project %q.\n", environment, config.ProjectSlug)
+		success(cmd.OutOrStdout(), fmt.Sprintf("Deleted remote environment %q from project %q.", environment, config.ProjectSlug))
 		return nil
 	},
 }

@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +26,7 @@ var accountRmCmd = &cobra.Command{
 		if err := client.DeleteAccount(); err != nil {
 			return err
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), "Account deleted.")
+		success(cmd.OutOrStdout(), "Account deleted.")
 		return nil
 	},
 }

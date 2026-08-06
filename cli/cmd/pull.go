@@ -29,10 +29,13 @@ var pullCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if _, err := pullEnvironment(environment, passphrase, file, true); err != nil {
+		if err := withSpinner(cmd.OutOrStdout(), "Pulling "+environment, func() error {
+			_, perr := pullEnvironment(environment, passphrase, file, true)
+			return perr
+		}); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Pulled %q into %s.\n", environment, file)
+		success(cmd.OutOrStdout(), fmt.Sprintf("Pulled %q into %s.", environment, file))
 		return nil
 	},
 }

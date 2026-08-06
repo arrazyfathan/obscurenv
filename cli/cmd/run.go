@@ -35,6 +35,9 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if interactive() {
+			accent(cmd.OutOrStdout(), fmt.Sprintf("Running %s with %d variables from %q.", args[0], len(envVars), environment))
+		}
 		child := exec.Command(args[0], args[1:]...)
 		child.Stdout = os.Stdout
 		child.Stderr = os.Stderr
