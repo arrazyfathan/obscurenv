@@ -147,8 +147,8 @@ func TestPushAutoDetectsLocalProperties(t *testing.T) {
 	if version != 2 {
 		t.Fatalf("version = %d, want 2", version)
 	}
-	if gotPlaintext != "sdk.dir=/opt/android\nAPI_KEY=android-secret\n" {
-		t.Fatalf("pushed plaintext = %q, want local.properties content", gotPlaintext)
+	if gotPlaintext != "API_KEY=android-secret\n" {
+		t.Fatalf("pushed plaintext = %q, want local.properties without sdk.dir", gotPlaintext)
 	}
 	config, err := loadProjectConfig()
 	if err != nil {
@@ -354,6 +354,183 @@ func TestPullDecryptFailureLeavesResolvedFileUnchanged(t *testing.T) {
 	}
 	if string(data) != "sdk.dir=/existing\n" {
 		t.Fatalf("local.properties = %q, want unchanged content", data)
+	}
+}
+
+func TestStripLocalOnlyProperties(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"strips sdk.dir and keeps others", "sdk.dir=/opt/android\nAPI_KEY=secret\n", "API_KEY=secret\n"},
+		{"only sdk.dir becomes empty", "sdk.dir=/opt/android\n", ""},
+		{"keeps non-local-only path keys", "cmake.dir=/cmake\nAPI_KEY=x\n", "cmake.dir=/cmake\nAPI_KEY=x\n"},
+		{"keeps comments and other keys", "# comment\nAPI_KEY=secret\n", "# comment\nAPI_KEY=secret\n"},
+		{"no trailing newline preserved", "sdk.dir=/opt\nAPI_KEY=x", "API_KEY=x"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := stripLocalOnlyProperties([]byte(tc.in))
+			if string(got) != tc.want {
+				t.Fatalf("strip = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMergeLocalOnlyProperties(t *testing.T) {
+	cases := []struct {
+		name     string
+		pulled   string
+		existing string
+		want     string
+	}{
+		{
+			"keeps existing local sdk.dir",
+			"API_KEY=new\n",
+			"sdk.dir=/local\n",
+			"API_KEY=new\nsdk.dir=/local\n",
+		},
+		{
+			"server sdk.dir replaced by local",
+			"sdk.dir=/server\nAPI_KEY=new\n",
+			"sdk.dir=/local\n",
+			"API_KEY=new\nsdk.dir=/local\n",
+		},
+		{
+			"no existing local-only keys",
+			"API_KEY=new\n",
+			"FOO=bar\n",
+			"API_KEY=new\n",
+		},
+		{
+			"empty existing file",
+			"API_KEY=new\n",
+			"",
+			"API_KEY=new\n",
+		},
+		{
+			"pulled only local-only keys",
+			"sdk.dir=/server\n",
+			"sdk.dir=/local\n",
+			"sdk.dir=/local\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mergeLocalOnlyProperties([]byte(tc.pulled), []byte(tc.existing))
+			if string(got) != tc.want {
+				t.Fatalf("merge = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPullMergesLocalSdkDirBackIntoLocalProperties(t *testing.T) {
+	withTempWorkingDir(t)
+	setupFileCommandTest(t, ProjectConfig{
+		ProjectSlug:       "obsecurenv",
+		ActiveEnvironment: "development",
+		EnvFile:           gradleEnvFile,
+	})
+	writeTestFile(t, gradleEnvFile, "sdk.dir=/local\nAPI_KEY=old\n")
+
+	payload, err := obecrypto.EncryptWithPassphrase([]byte("API_KEY=new\nSECRET=x\n"), "passphrase")
+	if err != nil {
+		t.Fatalf("EncryptWithPassphrase: %v", err)
+	}
+	restore := stubAPIClient(pullPayloadHandler(t, payload))
+	t.Cleanup(restore)
+
+	if _, err := pullEnvironment("development", "passphrase", gradleEnvFile, true); err != nil {
+		t.Fatalf("pullEnvironment: %v", err)
+	}
+	data, err := os.ReadFile(gradleEnvFile)
+	if err != nil {
+		t.Fatalf("read local.properties: %v", err)
+	}
+	if string(data) != "API_KEY=new\nSECRET=x\nsdk.dir=/local\n" {
+		t.Fatalf("local.properties = %q, want synced keys with local sdk.dir preserved", data)
+	}
+}
+
+func TestPullIgnoresServerSdkDirWhenLocalExists(t *testing.T) {
+	withTempWorkingDir(t)
+	setupFileCommandTest(t, ProjectConfig{
+		ProjectSlug:       "obsecurenv",
+		ActiveEnvironment: "development",
+		EnvFile:           gradleEnvFile,
+	})
+	writeTestFile(t, gradleEnvFile, "sdk.dir=/local\n")
+
+	payload, err := obecrypto.EncryptWithPassphrase([]byte("sdk.dir=/server\nAPI_KEY=new\n"), "passphrase")
+	if err != nil {
+		t.Fatalf("EncryptWithPassphrase: %v", err)
+	}
+	restore := stubAPIClient(pullPayloadHandler(t, payload))
+	t.Cleanup(restore)
+
+	if _, err := pullEnvironment("development", "passphrase", gradleEnvFile, true); err != nil {
+		t.Fatalf("pullEnvironment: %v", err)
+	}
+	data, err := os.ReadFile(gradleEnvFile)
+	if err != nil {
+		t.Fatalf("read local.properties: %v", err)
+	}
+	if string(data) != "API_KEY=new\nsdk.dir=/local\n" {
+		t.Fatalf("local.properties = %q, want server sdk.dir replaced by local value", data)
+	}
+}
+
+func TestPushStripsSdkDirOnlyFromLocalProperties(t *testing.T) {
+	withTempWorkingDir(t)
+	setupFileCommandTest(t, ProjectConfig{
+		ProjectSlug:       "obsecurenv",
+		ActiveEnvironment: "development",
+		EnvFile:           gradleEnvFile,
+	})
+	writeTestFile(t, gradleEnvFile, "sdk.dir=/opt/android\ncmake.dir=/cmake\nAPI_KEY=secret\n")
+
+	var gotPlaintext string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/env/push" {
+			http.NotFound(w, r)
+			return
+		}
+		var req struct {
+			EncryptedPayload string `json:"encrypted_payload"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode push request: %v", err)
+		}
+		plaintext, err := obecrypto.DecryptWithPassphrase(req.EncryptedPayload, "passphrase")
+		if err != nil {
+			t.Fatalf("decrypt pushed payload: %v", err)
+		}
+		gotPlaintext = string(plaintext)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":"Pushed successfully","version":1}`))
+	})
+	restore := stubAPIClient(handler)
+	t.Cleanup(restore)
+
+	if _, err := pushEnvironment("development", "passphrase", gradleEnvFile); err != nil {
+		t.Fatalf("pushEnvironment: %v", err)
+	}
+	if gotPlaintext != "cmake.dir=/cmake\nAPI_KEY=secret\n" {
+		t.Fatalf("pushed plaintext = %q, want cmake.dir and API_KEY without sdk.dir", gotPlaintext)
+	}
+	data, err := os.ReadFile(gradleEnvFile)
+	if err != nil {
+		t.Fatalf("read local.properties: %v", err)
+	}
+	if string(data) != "sdk.dir=/opt/android\ncmake.dir=/cmake\nAPI_KEY=secret\n" {
+		t.Fatalf("local file = %q, want untouched on disk", data)
 	}
 }
 

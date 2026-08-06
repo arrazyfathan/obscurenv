@@ -82,6 +82,9 @@ func pushEnvironment(environment, passphrase, file string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("read %s: %w", file, err)
 	}
+	if isLocalPropertiesFile(file) {
+		plaintext = stripLocalOnlyProperties(plaintext)
+	}
 	payload, err := obecrypto.EncryptWithPassphrase(plaintext, passphrase)
 	if err != nil {
 		return 0, err

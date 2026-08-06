@@ -165,7 +165,7 @@ Local files:
 - `.obe.json`: project config created by `obe init`.
 - `~/.obe/credentials.json`: API token and API URL created by `obe login`.
 - `.env`: plaintext env file; do not commit it.
-- `local.properties`: supported plaintext Android/Gradle properties file; do not commit it.
+- `local.properties`: supported plaintext Android/Gradle properties file; do not commit it. Machine-specific keys (currently `sdk.dir`) are never uploaded: they are stripped before push and preserved from your local file on pull.
 
 Managed file selection:
 

@@ -131,15 +131,15 @@ func TestUsePushCurrentUsesConfiguredLocalProperties(t *testing.T) {
 	if err := useCmd.RunE(useCmd, []string{"production"}); err != nil {
 		t.Fatalf("use: %v", err)
 	}
-	if pushedPlaintext != "sdk.dir=/existing\n" {
-		t.Fatalf("pushed plaintext = %q, want local.properties content", pushedPlaintext)
+	if pushedPlaintext != "" {
+		t.Fatalf("pushed plaintext = %q, want empty (sdk.dir is local-only)", pushedPlaintext)
 	}
 	data, err := os.ReadFile(gradleEnvFile)
 	if err != nil {
 		t.Fatalf("read local.properties: %v", err)
 	}
-	if string(data) != "sdk.dir=/target\n" {
-		t.Fatalf("local.properties = %q, want target payload", data)
+	if string(data) != "sdk.dir=/existing\n" {
+		t.Fatalf("local.properties = %q, want existing sdk.dir preserved", data)
 	}
 }
 

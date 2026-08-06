@@ -70,6 +70,16 @@ func pullEnvironment(environment, passphrase, file string, writeFile bool) ([]by
 	if !writeFile {
 		return plaintext, nil
 	}
+	if isLocalPropertiesFile(file) {
+		existing, err := os.ReadFile(file)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return nil, err
+			}
+		} else {
+			plaintext = mergeLocalOnlyProperties(plaintext, existing)
+		}
+	}
 	tmp := file + ".obe.tmp"
 	if err := os.WriteFile(tmp, plaintext, 0600); err != nil {
 		return nil, err
