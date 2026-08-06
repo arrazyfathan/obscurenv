@@ -27,6 +27,7 @@ func main() {
 
 	router := gin.Default()
 	registerHealthRoutes(router)
+	registerDocsRoutes(router)
 	api := router.Group("/api/v1")
 	authHandler := handlers.NewAuthHandler(database)
 	api.POST("/auth/register", authHandler.Register)
@@ -39,6 +40,7 @@ func main() {
 	projectHandler := handlers.NewProjectHandler(database)
 	envHandler := handlers.NewEnvHandler(database)
 	userHandler := handlers.NewUserHandler(database)
+	activityHandler := handlers.NewActivityHandler(database)
 	protected.GET("/auth/passkeys", authHandler.ListPasskeys)
 	protected.DELETE("/auth/passkeys/:id", authHandler.RevokePasskey)
 	protected.POST("/auth/passkey/register/options", authHandler.PasskeyRegisterOptions)
@@ -54,6 +56,7 @@ func main() {
 	protected.GET("/env/list", envHandler.List)
 	protected.GET("/env/versions", envHandler.Versions)
 	protected.DELETE("/env", envHandler.Delete)
+	protected.GET("/activity", activityHandler.List)
 
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("run server: %v", err)

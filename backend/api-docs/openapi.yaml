@@ -1,0 +1,780 @@
+openapi: 3.1.0
+info:
+  title: Obscurenv API
+  description: |
+    Zero-knowledge encrypted `.env` storage. The backend stores only opaque
+    encrypted payloads and metadata. Never send plaintext env values,
+    passphrases, derived keys, or raw encryption keys to this API.
+
+    The CLI performs encryption/decryption locally. API calls should send only
+    encrypted payloads. See `docs/api.md` for the developer guide.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Default local backend (override with OBE_API_URL / ADDR)
+security: []
+tags:
+  - name: Health
+    description: Service health and version info
+  - name: Auth
+    description: Registration, login, and passkey authentication
+  - name: Projects
+    description: Manage projects that group environments
+  - name: Environments
+    description: Push, pull, list, and delete encrypted environments
+  - name: User
+    description: Current user profile
+  - name: Activity
+    description: Audit trail of project and environment changes
+paths:
+  /:
+    get:
+      tags: [Health]
+      summary: Service info
+      operationId: getRoot
+      responses:
+        '200':
+          description: Service identity and status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string, example: obscurenv }
+                  status: { type: string, example: ok }
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      operationId: healthz
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+            example:
+              email: alice@example.com
+              username: alice
+              password: super-secret
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: User registered successfully }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and obtain an API token
+      description: |
+        Provide `email` or `username` plus `password`. Returns an
+        `obe_tok_...` bearer token exactly once; the backend stores only its
+        hash. `token_name` is a label used to identify the credential.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+            example:
+              email: alice@example.com
+              password: super-secret
+              token_name: cli
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, example: obe_tok_... }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/auth/passkey/login/options:
+    post:
+      tags: [Auth]
+      summary: Start a passkey login ceremony
+      description: Returns opaque PublicKeyCredential request options.
+      operationId: passkeyLoginOptions
+      responses:
+        '200':
+          description: Challenge created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PasskeyOptionsResponse' }
+        '503':
+          $ref: '#/components/responses/PasskeyUnconfigured'
+  /api/v1/auth/passkey/login/finish:
+    post:
+      tags: [Auth]
+      summary: Complete a passkey login ceremony
+      description: Finalize login and receive a bearer token.
+      operationId: passkeyLoginFinish
+      parameters:
+        - $ref: '#/components/parameters/CeremonyID'
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, example: obe_tok_... }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Invalid or expired passkey challenge
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          $ref: '#/components/responses/PasskeyUnconfigured'
+  /api/v1/auth/passkeys:
+    get:
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      summary: List the current user's passkeys
+      operationId: listPasskeys
+      responses:
+        '200':
+          description: Passkeys owned by the authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  passkeys:
+                    type: array
+                    items: { $ref: '#/components/schemas/PasskeySummary' }
+  /api/v1/auth/passkeys/{id}:
+    delete:
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      summary: Revoke a passkey
+      operationId: revokePasskey
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Passkey UUID
+      responses:
+        '200':
+          description: Passkey revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '404':
+          description: Passkey not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/auth/passkey/register/options:
+    post:
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      summary: Start a passkey registration ceremony
+      description: Returns opaque PublicKeyCredential creation options.
+      operationId: passkeyRegisterOptions
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, description: Optional passkey label, example: work-laptop }
+      responses:
+        '200':
+          description: Challenge created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PasskeyOptionsResponse' }
+        '503':
+          $ref: '#/components/responses/PasskeyUnconfigured'
+  /api/v1/auth/passkey/register/finish:
+    post:
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      summary: Complete a passkey registration ceremony
+      operationId: passkeyRegisterFinish
+      parameters:
+        - $ref: '#/components/parameters/CeremonyID'
+      responses:
+        '200':
+          description: Passkey registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Invalid or expired passkey challenge
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Passkey already registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          $ref: '#/components/responses/PasskeyUnconfigured'
+  /api/v1/projects:
+    get:
+      tags: [Projects]
+      security: [{ bearerAuth: [] }]
+      summary: List projects
+      operationId: listProjects
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter projects by name, slug, or environment name
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+          description: Alias for `search`
+      responses:
+        '200':
+          description: Projects owned by the authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProjectSummary' }
+    post:
+      tags: [Projects]
+      security: [{ bearerAuth: [] }]
+      summary: Create a project
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProjectRequest' }
+            example: { name: My App, slug: my-app }
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateProjectResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: A project with this slug already exists
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/projects/{slug}:
+    get:
+      tags: [Projects]
+      security: [{ bearerAuth: [] }]
+      summary: Get a project by slug
+      operationId: getProject
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+          description: Project slug
+      responses:
+        '200':
+          description: Project with its latest environments
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectDetail' }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Projects]
+      security: [{ bearerAuth: [] }]
+      summary: Delete a project and all its environments
+      operationId: deleteProject
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+          description: Project slug
+      responses:
+        '200':
+          description: Project deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: project deleted }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/env/push:
+    post:
+      tags: [Environments]
+      security: [{ bearerAuth: [] }]
+      summary: Push an encrypted environment
+      description: |
+        Stores an opaque `encrypted_payload` as a new version. `checksum` must
+        equal the hex SHA-256 of the raw `encrypted_payload` bytes. The backend
+        never inspects or decrypts the payload.
+      operationId: pushEnv
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushRequest' }
+            example:
+              project_slug: my-app
+              environment: production
+              encrypted_payload: <opaque AES-GCM envelope>
+              checksum: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      responses:
+        '200':
+          description: Environment stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PushResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/env/pull:
+    get:
+      tags: [Environments]
+      security: [{ bearerAuth: [] }]
+      summary: Pull the latest (or a specific) environment version
+      operationId: pullEnv
+      parameters:
+        - name: project
+          in: query
+          required: true
+          schema: { type: string }
+          description: Project slug
+        - name: environment
+          in: query
+          required: true
+          schema: { type: string }
+          description: Environment name
+        - name: version
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
+          description: Specific version to pull; defaults to the latest
+      responses:
+        '200':
+          description: Encrypted environment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnvVersion' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: Environment not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/env/list:
+    get:
+      tags: [Environments]
+      security: [{ bearerAuth: [] }]
+      summary: List environment names for a project
+      operationId: listEnvs
+      parameters:
+        - name: project
+          in: query
+          required: true
+          schema: { type: string }
+          description: Project slug
+      responses:
+        '200':
+          description: Environment names
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  environments:
+                    type: array
+                    items: { type: string }
+                    example: [development, production]
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /api/v1/env/versions:
+    get:
+      tags: [Environments]
+      security: [{ bearerAuth: [] }]
+      summary: List version history for an environment
+      operationId: listEnvVersions
+      parameters:
+        - name: project
+          in: query
+          required: true
+          schema: { type: string }
+          description: Project slug
+        - name: environment
+          in: query
+          required: true
+          schema: { type: string }
+          description: Environment name
+      responses:
+        '200':
+          description: Version metadata, newest first (payloads omitted)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: '#/components/schemas/EnvVersionMeta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /api/v1/env:
+    delete:
+      tags: [Environments]
+      security: [{ bearerAuth: [] }]
+      summary: Delete an environment and all its versions
+      operationId: deleteEnv
+      parameters:
+        - name: project
+          in: query
+          required: true
+          schema: { type: string }
+          description: Project slug
+        - name: environment
+          in: query
+          required: true
+          schema: { type: string }
+          description: Environment name
+      responses:
+        '200':
+          description: Environment deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: environment deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: Project or environment not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/user/profile:
+    get:
+      tags: [User]
+      security: [{ bearerAuth: [] }]
+      summary: Get the current user's profile
+      operationId: getProfile
+      responses:
+        '200':
+          description: Profile of the authenticated user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    patch:
+      tags: [User]
+      security: [{ bearerAuth: [] }]
+      summary: Update the current user's username
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username: { type: string, example: alice-dev }
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Username already taken
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/activity:
+    get:
+      tags: [Activity]
+      security: [{ bearerAuth: [] }]
+      summary: List recent activity for the current user
+      description: |
+        Returns an audit trail of project and environment changes, newest
+        first. Scoped to the authenticated user. This endpoint is API-only;
+        the CLI has no activity command yet.
+
+        Actions: `project.created`, `project.deleted`, `env.pushed`,
+        `env.deleted`. Metadata for `env.pushed` includes the stored `version`.
+      operationId: listActivity
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+          description: Maximum number of activities to return
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+          description: Number of activities to skip
+        - name: project
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter by project slug
+        - name: action
+          in: query
+          required: false
+          schema: { type: string, enum: [project.created, project.deleted, env.pushed, env.deleted] }
+          description: Filter by action
+      responses:
+        '200':
+          description: Activity feed and total count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [activities, total]
+                properties:
+                  activities:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActivityItem' }
+                  total:
+                    type: integer
+                    description: Total matching activities (unaffected by limit/offset)
+        '400': { $ref: '#/components/responses/BadRequest' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API token returned by POST /auth/login or passkey login, e.g. `obe_tok_...`.
+  parameters:
+    CeremonyID:
+      name: ceremony_id
+      in: query
+      required: true
+      schema: { type: string }
+      description: Ceremony ID returned by the matching /options call
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PasskeyUnconfigured:
+      description: Passkey authentication is not configured on this instance
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, example: project not found }
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, example: alice@example.com }
+        username: { type: string, example: alice }
+        password: { type: string, minLength: 8, example: super-secret }
+    LoginRequest:
+      type: object
+      required: [password, token_name]
+      properties:
+        email: { type: string, format: email }
+        username: { type: string }
+        password: { type: string }
+        token_name: { type: string, example: cli }
+    PasskeyOptionsResponse:
+      type: object
+      required: [ceremony_id, options]
+      properties:
+        ceremony_id: { type: string, description: Opaque ceremony identifier for the /finish call }
+        options:
+          type: object
+          additionalProperties: true
+          description: Opaque WebAuthn PublicKeyCredential options; pass through to the authenticator
+    PasskeySummary:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+        last_used_at:
+          type: [string, 'null']
+          format: date-time
+    CreateProjectRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name: { type: string, example: My App }
+        slug: { type: string, example: my-app }
+    CreateProjectResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+    EnvironmentSummary:
+      type: object
+      properties:
+        name: { type: string, example: production }
+        latest_version: { type: integer, example: 3 }
+        checksum: { type: string, description: Hex SHA-256 of the latest encrypted payload }
+        updated_at: { type: string, format: date-time }
+    ProjectSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        created_at: { type: string, format: date-time }
+        environment_count: { type: integer, example: 2 }
+        latest_version:
+          type: [integer, 'null']
+          description: Newest version across environments, or null when empty
+        latest_updated_at:
+          type: [string, 'null']
+          format: date-time
+        environments:
+          type: array
+          items: { $ref: '#/components/schemas/EnvironmentSummary' }
+          description: Present in GET /projects/:slug
+    ProjectDetail:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        created_at: { type: string, format: date-time }
+        environment_count: { type: integer }
+        latest_version:
+          type: [integer, 'null']
+        latest_updated_at:
+          type: [string, 'null']
+          format: date-time
+        environments:
+          type: array
+          items: { $ref: '#/components/schemas/EnvironmentSummary' }
+    PushRequest:
+      type: object
+      required: [project_slug, environment, encrypted_payload, checksum]
+      properties:
+        project_slug: { type: string, example: my-app }
+        environment: { type: string, example: production }
+        encrypted_payload:
+          type: string
+          description: Opaque encrypted envelope created by the CLI
+        checksum:
+          type: string
+          minLength: 64
+          maxLength: 64
+          description: Hex SHA-256 of the raw encrypted_payload bytes
+    PushResponse:
+      type: object
+      properties:
+        message: { type: string, example: Pushed successfully }
+        version: { type: integer, example: 4 }
+    EnvVersion:
+      type: object
+      properties:
+        project_slug: { type: string }
+        environment: { type: string }
+        version: { type: integer }
+        encrypted_payload:
+          type: string
+          description: Opaque encrypted envelope; decrypt locally in the CLI
+        checksum: { type: string, description: Hex SHA-256 of encrypted_payload }
+    EnvVersionMeta:
+      type: object
+      properties:
+        project_slug: { type: string }
+        environment: { type: string }
+        version: { type: integer }
+        checksum: { type: string }
+        created_at: { type: string, format: date-time }
+    UserProfile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        username:
+          type: [string, 'null']
+        created_at: { type: string, format: date-time }
+    ActivityItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        action:
+          type: string
+          enum: [project.created, project.deleted, env.pushed, env.deleted]
+        project_slug:
+          type: [string, 'null']
+          description: Denormalized so the trail survives project deletion
+        environment_name:
+          type: [string, 'null']
+        metadata:
+          type: [object, 'null']
+          description: 'Action-specific details, e.g. `{"version": 4}` for env.pushed'
+        created_at: { type: string, format: date-time }

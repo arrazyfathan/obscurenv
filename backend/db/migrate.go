@@ -80,4 +80,18 @@ CREATE TABLE IF NOT EXISTS env_versions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(project_id, environment_name, version)
 );
+
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    action VARCHAR(50) NOT NULL,
+    project_slug VARCHAR(100),
+    environment_name VARCHAR(50),
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS activity_logs_user_created_idx ON activity_logs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS activity_logs_project_idx ON activity_logs (project_id);
 `

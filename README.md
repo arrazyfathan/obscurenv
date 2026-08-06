@@ -257,35 +257,42 @@ Production notes:
 
 ## API
 
+The backend exposes a JSON REST API under `/api/v1`. Run the server and open
+`http://localhost:8080/docs` for interactive docs, or read the full developer
+guide in [`docs/api.md`](docs/api.md). The OpenAPI 3.1 spec at
+`backend/api-docs/openapi.yaml` is the source of truth.
+
 Protected endpoints require:
 
 ```text
 Authorization: Bearer <API_TOKEN>
 ```
 
-Endpoints:
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| POST | `/api/v1/auth/register` | – | Create a user |
+| POST | `/api/v1/auth/login` | – | Password login → API token |
+| POST | `/api/v1/auth/passkey/login/options` | – | Start passkey login |
+| POST | `/api/v1/auth/passkey/login/finish` | – | Finish passkey login → API token |
+| GET | `/api/v1/auth/passkeys` | Bearer | List passkeys |
+| DELETE | `/api/v1/auth/passkeys/:id` | Bearer | Revoke a passkey |
+| POST | `/api/v1/auth/passkey/register/options` | Bearer | Start passkey registration |
+| POST | `/api/v1/auth/passkey/register/finish` | Bearer | Finish passkey registration |
+| GET | `/api/v1/projects` | Bearer | List projects (`?search=`/`?q=`) |
+| POST | `/api/v1/projects` | Bearer | Create a project |
+| GET | `/api/v1/projects/:slug` | Bearer | Get project + latest environments |
+| DELETE | `/api/v1/projects/:slug` | Bearer | Delete a project |
+| POST | `/api/v1/env/push` | Bearer | Push an encrypted environment (new version) |
+| GET | `/api/v1/env/pull?project=&environment=` | Bearer | Pull latest (or a specific) environment |
+| GET | `/api/v1/env/list?project=` | Bearer | List environment names |
+| GET | `/api/v1/env/versions?project=&environment=` | Bearer | List version history |
+| DELETE | `/api/v1/env?project=&environment=` | Bearer | Delete an environment |
+| GET | `/api/v1/user/profile` | Bearer | Get profile |
+| PATCH | `/api/v1/user/profile` | Bearer | Update username |
+| GET | `/api/v1/activity` | Bearer | Recent activity feed (`limit`, `offset`, `project`, `action`) |
 
-```text
-POST /api/v1/auth/register
-POST /api/v1/auth/login
-POST /api/v1/auth/passkey/login/options
-POST /api/v1/auth/passkey/login/finish
-POST /api/v1/projects
-POST /api/v1/env/push
-GET  /api/v1/env/pull?project=my-app&environment=development
-GET  /api/v1/env/list?project=my-app
-```
-
-Additional protected passkey endpoints:
-
-```text
-GET    /api/v1/auth/passkeys
-DELETE /api/v1/auth/passkeys/:id
-POST   /api/v1/auth/passkey/register/options
-POST   /api/v1/auth/passkey/register/finish
-```
-
-Use the CLI for normal operation. API calls should send only encrypted payloads, never plaintext env values or passphrases.
+Use the CLI for normal operation. API calls should send only encrypted
+payloads, never plaintext env values or passphrases.
 
 ## Security Model
 

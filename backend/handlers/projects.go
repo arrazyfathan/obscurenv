@@ -49,14 +49,31 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 		badRequest(c, "invalid project request")
 		return
 	}
+	userID := middleware.UserID(c)
+
+	tx, err := h.db.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback()
+
 	var id string
-	err := h.db.QueryRowContext(c.Request.Context(), `
+	err = tx.QueryRowContext(c.Request.Context(), `
 		INSERT INTO projects (user_id, name, slug)
 		VALUES ($1, $2, $3)
 		RETURNING id
-	`, middleware.UserID(c), req.Name, req.Slug).Scan(&id)
+	`, userID, req.Name, req.Slug).Scan(&id)
 	if err != nil {
 		errorJSON(c, http.StatusConflict, "project already exists")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, userID, id, ActionProjectCreated, req.Slug, "", nil); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to create project")
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"id": id, "slug": req.Slug})
@@ -273,21 +290,36 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 }
 
 func (h *ProjectHandler) Delete(c *gin.Context) {
-	result, err := h.db.ExecContext(c.Request.Context(), `
-		DELETE FROM projects
-		WHERE user_id = $1 AND slug = $2
-	`, middleware.UserID(c), c.Param("slug"))
+	userID := middleware.UserID(c)
+	slug := c.Param("slug")
+
+	tx, err := h.db.BeginTx(c.Request.Context(), nil)
 	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback()
+
+	var id string
+	err = tx.QueryRowContext(c.Request.Context(), `
+		SELECT id FROM projects WHERE user_id = $1 AND slug = $2
+	`, userID, slug).Scan(&id)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, "project not found")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, userID, id, ActionProjectDeleted, slug, "", nil); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if _, err := tx.ExecContext(c.Request.Context(), `
+		DELETE FROM projects WHERE id = $1
+	`, id); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to delete project")
 		return
 	}
-	deleted, err := result.RowsAffected()
-	if err != nil {
-		errorJSON(c, http.StatusInternalServerError, "failed to confirm project deletion")
-		return
-	}
-	if deleted == 0 {
-		errorJSON(c, http.StatusNotFound, "project not found")
+	if err := tx.Commit(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to delete project")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "project deleted"})

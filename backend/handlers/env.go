@@ -76,6 +76,10 @@ func (h *EnvHandler) Push(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, "failed to store environment")
 		return
 	}
+	if err := recordActivity(c.Request.Context(), tx, userID, projectID, ActionEnvPushed, req.ProjectSlug, req.Environment, gin.H{"version": version}); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to commit environment")
 		return
@@ -215,14 +219,28 @@ func (h *EnvHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	result, err := h.db.ExecContext(c.Request.Context(), `
-		DELETE FROM env_versions ev
-		USING projects p
-		WHERE ev.project_id = p.id
-			AND p.user_id = $1
-			AND p.slug = $2
-			AND ev.environment_name = $3
-	`, middleware.UserID(c), projectSlug, environment)
+	userID := middleware.UserID(c)
+
+	tx, err := h.db.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback()
+
+	var projectID string
+	err = tx.QueryRowContext(c.Request.Context(), `
+		SELECT id FROM projects WHERE user_id = $1 AND slug = $2
+	`, userID, projectSlug).Scan(&projectID)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, "project not found")
+		return
+	}
+
+	result, err := tx.ExecContext(c.Request.Context(), `
+		DELETE FROM env_versions
+		WHERE project_id = $1 AND environment_name = $2
+	`, projectID, environment)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to delete environment")
 		return
@@ -234,6 +252,14 @@ func (h *EnvHandler) Delete(c *gin.Context) {
 	}
 	if deleted == 0 {
 		errorJSON(c, http.StatusNotFound, "environment not found")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, userID, projectID, ActionEnvDeleted, projectSlug, environment, nil); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to delete environment")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "environment deleted"})
