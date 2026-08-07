@@ -52,6 +52,10 @@ type passkeyOptionsRequest struct {
 	Name string `json:"name"`
 }
 
+type passkeyLoginOptionsRequest struct {
+	AllowCredentials []protocol.CredentialDescriptor `json:"allowCredentials"`
+}
+
 type passkeyOptionsResponse struct {
 	CeremonyID string `json:"ceremony_id"`
 	Options    any    `json:"options"`
@@ -131,7 +135,17 @@ func (h *AuthHandler) PasskeyLoginOptions(c *gin.Context) {
 		errorJSON(c, http.StatusServiceUnavailable, "passkey authentication is not configured")
 		return
 	}
-	options, session, err := h.passkey.BeginDiscoverableLogin()
+	var req passkeyLoginOptionsRequest
+	_ = c.ShouldBindJSON(&req)
+
+	var options *protocol.CredentialAssertion
+	var session *webauthn.SessionData
+	var err error
+	if len(req.AllowCredentials) > 0 {
+		options, session, err = h.passkey.BeginDiscoverableLogin(webauthn.WithAllowedCredentials(req.AllowCredentials))
+	} else {
+		options, session, err = h.passkey.BeginDiscoverableLogin()
+	}
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to create passkey challenge")
 		return
