@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -63,6 +65,28 @@ func newAPIToken() (string, string, error) {
 func tokenHash(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
+}
+
+// rotateToken revokes the user's existing token with the same name and stores
+// a fresh one, so each (user, name) keeps at most one active token.
+func rotateToken(ctx context.Context, database *sql.DB, userID, name, hash string) error {
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM api_tokens
+		WHERE user_id = $1 AND name = $2
+	`, userID, name); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO api_tokens (user_id, token_hash, name) VALUES ($1, $2, $3)
+	`, userID, hash, name); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func randomBytes(size int) ([]byte, error) {

@@ -6,7 +6,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-webauthn/webauthn/protocol"
@@ -62,11 +61,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 }
 
 type loginRequest struct {
-	Email          string `json:"email"`
-	Username       string `json:"username"`
-	Password       string `json:"password" binding:"required"`
-	TokenName      string `json:"token_name" binding:"required"`
-	ExpiresInDays  *int   `json:"expires_in_days"`
+	Email     string `json:"email"`
+	Username  string `json:"username"`
+	Password  string `json:"password" binding:"required"`
+	TokenName string `json:"token_name" binding:"required"`
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -103,19 +101,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
-	if req.ExpiresInDays != nil && *req.ExpiresInDays < 1 {
-		badRequest(c, "expires_in_days must be a positive integer")
-		return
-	}
-	var expiresAt *time.Time
-	if req.ExpiresInDays != nil {
-		value := time.Now().UTC().Add(time.Duration(*req.ExpiresInDays) * 24 * time.Hour)
-		expiresAt = &value
-	}
-	_, err = h.db.ExecContext(c.Request.Context(), `
-		INSERT INTO api_tokens (user_id, token_hash, name, expires_at) VALUES ($1, $2, $3, $4)
-	`, userID, hash, req.TokenName, nullIfTime(expiresAt))
-	if err != nil {
+	if err := rotateToken(c.Request.Context(), h.db, userID, req.TokenName, hash); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to store token")
 		return
 	}

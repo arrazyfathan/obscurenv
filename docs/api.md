@@ -38,7 +38,10 @@ curl -i "$OBE_API_URL/healthz"
 
 The token is an `obe_tok_...` bearer credential. It is returned exactly once;
 the backend stores only its hash. Passkey login returns a token the same way.
-If you lose it, log in again (or revoke/re-issue from the CLI).
+If you lose it, log in again with the same `token_name` (or revoke/re-issue
+from the CLI). Logging in with a `token_name` that already exists rotates that
+token: the previous one is revoked and a fresh one is issued, so each name
+keeps at most one active token.
 
 Authenticate all protected endpoints with:
 

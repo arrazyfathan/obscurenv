@@ -175,10 +175,7 @@ func (h *AuthHandler) PasskeyLoginFinish(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
-	_, err = h.db.ExecContext(c.Request.Context(), `
-		INSERT INTO api_tokens (user_id, token_hash, name) VALUES ($1, $2, $3)
-	`, passkeyUser.id, hash, "passkey-web")
-	if err != nil {
+	if err := rotateToken(c.Request.Context(), h.db, passkeyUser.id, "passkey-web", hash); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to store token")
 		return
 	}

@@ -30,6 +30,17 @@ CREATE TABLE IF NOT EXISTS api_tokens (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Logins rotate the user's token with the same name, so enforce one per
+-- (user, name). First remove any pre-existing duplicates, keeping the newest.
+DELETE FROM api_tokens a
+USING api_tokens b
+WHERE a.user_id = b.user_id
+  AND a.name = b.name
+  AND (a.created_at < b.created_at
+       OR (a.created_at = b.created_at AND a.id < b.id));
+
+CREATE UNIQUE INDEX IF NOT EXISTS api_tokens_user_name_key ON api_tokens (user_id, name);
+
 CREATE TABLE IF NOT EXISTS webauthn_users (
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     rp_id VARCHAR(512) NOT NULL,

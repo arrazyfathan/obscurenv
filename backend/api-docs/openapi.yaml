@@ -92,7 +92,10 @@ paths:
       description: |
         Provide `email` or `username` plus `password`. Returns an
         `obe_tok_...` bearer token exactly once; the backend stores only its
-        hash. `token_name` is a label used to identify the credential.
+        hash. `token_name` is a label used to identify the credential. Logging
+        in with a `token_name` that already exists rotates that token: the
+        previous token is revoked and a fresh one is issued, so each name keeps
+        at most one active token.
       operationId: login
       requestBody:
         required: true
@@ -853,10 +856,6 @@ components:
         username: { type: string }
         password: { type: string }
         token_name: { type: string, example: cli }
-        expires_in_days:
-          type: integer
-          minimum: 1
-          description: Number of days until the minted token expires
     PasskeyOptionsResponse:
       type: object
       required: [ceremony_id, options]
