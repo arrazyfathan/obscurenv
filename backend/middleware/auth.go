@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -34,8 +35,12 @@ func Auth(database *sql.DB) gin.HandlerFunc {
 			FROM api_tokens
 			WHERE token_hash = $1 AND (expires_at IS NULL OR expires_at > $2)
 		`, hash, time.Now().UTC()).Scan(&userID)
-		if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid bearer token"})
+			return
+		}
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to authenticate token"})
 			return
 		}
 		c.Set(userIDKey, userID)
