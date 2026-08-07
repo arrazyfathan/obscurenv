@@ -109,6 +109,7 @@ All routes under `/api/v1`:
 | GET | `/env/pull` | Bearer | Pull latest (or `?version=N`) environment |
 | GET | `/env/list` | Bearer | List environment names for a project |
 | GET | `/env/versions` | Bearer | List version history (payloads omitted) |
+| GET | `/env/validate` | Bearer | Diagnostic: version validity per envelope format (payloads omitted) |
 | DELETE | `/env` | Bearer | Delete an environment and its versions |
 | GET | `/user/profile` | Bearer | Get profile |
 | PATCH | `/user/profile` | Bearer | Update username |
@@ -153,6 +154,36 @@ Response:
 `total` counts all matching rows (ignores `limit`/`offset`). `project_slug`
 and `environment_name` are denormalized, so entries survive project or
 environment deletion.
+
+## Envelope validation diagnostic
+
+`GET /api/v1/env/validate` returns, for every version the authenticated user
+owns, whether its stored payload matches the envelope format the CLI and web
+expect. It never returns the encrypted payloads, only metadata and a validity
+flag, so it is safe to call on production data. Use it to find versions whose
+payloads the web dashboard cannot decrypt (for example, rows pushed before
+push-side validation existed) and re-push those environments.
+
+```json
+{
+  "versions": [
+    {
+      "project_slug": "my-app",
+      "environment": "production",
+      "version": 3,
+      "checksum": "…",
+      "created_at": "2026-08-06T12:00:00Z",
+      "valid": false,
+      "reason": "not a JSON object"
+    }
+  ]
+}
+```
+
+`reason` is one of `not a JSON object`, `invalid JSON`, `unsupported kdf`,
+`missing ciphertext`, `unsupported version`, `missing salt`,
+`passphrase key slot missing`, `passphrase key slot missing salt`, or
+`passphrase key slot missing wrapped key`.
 
 ## Worked example
 

@@ -16,7 +16,24 @@ import (
 	"github.com/obscurenv/obscurenv/backend/models"
 )
 
-const supportedEnvelopeVersion = 2
+const (
+	supportedEnvelopeVersion = 2
+	kdfName                  = "argon2id"
+)
+
+type envelope struct {
+	Version    int    `json:"version"`
+	KDF        string `json:"kdf"`
+	Salt       string `json:"salt"`
+	Ciphertext string `json:"ciphertext"`
+	KeySlots   struct {
+		Passphrase struct {
+			KDF        string `json:"kdf"`
+			Salt       string `json:"salt"`
+			WrappedKey string `json:"wrapped_key"`
+		} `json:"passphrase"`
+	} `json:"key_slots"`
+}
 
 type EnvHandler struct {
 	db *sql.DB
@@ -97,17 +114,43 @@ func (h *EnvHandler) Push(c *gin.Context) {
 }
 
 func validEnvelope(payload string) bool {
-	envelope := struct {
-		Version    int    `json:"version"`
-		Ciphertext string `json:"ciphertext"`
-	}{}
+	return envelopeValidationError(payload) == ""
+}
+
+func envelopeValidationError(payload string) string {
 	if !strings.HasPrefix(strings.TrimSpace(payload), "{") {
-		return false
+		return "not a JSON object"
 	}
-	if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
-		return false
+	var env envelope
+	if err := json.Unmarshal([]byte(payload), &env); err != nil {
+		return "invalid JSON"
 	}
-	return (envelope.Version == 1 || envelope.Version == supportedEnvelopeVersion) && envelope.Ciphertext != ""
+	if env.KDF != kdfName {
+		return "unsupported kdf"
+	}
+	if env.Ciphertext == "" {
+		return "missing ciphertext"
+	}
+	switch env.Version {
+	case 1:
+		if env.Salt == "" {
+			return "missing salt"
+		}
+		return ""
+	case supportedEnvelopeVersion:
+		slot := env.KeySlots.Passphrase
+		switch {
+		case slot.KDF != kdfName:
+			return "passphrase key slot missing"
+		case slot.Salt == "":
+			return "passphrase key slot missing salt"
+		case slot.WrappedKey == "":
+			return "passphrase key slot missing wrapped key"
+		}
+		return ""
+	default:
+		return "unsupported version"
+	}
 }
 
 func (h *EnvHandler) Pull(c *gin.Context) {
@@ -225,6 +268,57 @@ func (h *EnvHandler) Versions(c *gin.Context) {
 			return
 		}
 		item.CreatedAt = createdAt.Format(time.RFC3339)
+		versions = append(versions, item)
+	}
+	if err := rows.Err(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to read versions")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"versions": versions})
+}
+
+type envValidationItem struct {
+	ProjectSlug string `json:"project_slug"`
+	Environment string `json:"environment"`
+	Version     int    `json:"version"`
+	Checksum    string `json:"checksum"`
+	CreatedAt   string `json:"created_at"`
+	Valid       bool   `json:"valid"`
+	Reason      string `json:"reason,omitempty"`
+}
+
+// ValidateList is a diagnostic helper that reports which stored versions hold
+// a payload that does not match the envelope format the web and CLI expect.
+// It never returns the encrypted payloads themselves.
+func (h *EnvHandler) ValidateList(c *gin.Context) {
+	rows, err := h.db.QueryContext(c.Request.Context(), `
+		SELECT p.slug, ev.environment_name, ev.version, ev.checksum, ev.encrypted_payload, ev.created_at
+		FROM env_versions ev
+		JOIN projects p ON p.id = ev.project_id
+		WHERE p.user_id = $1
+		ORDER BY p.slug, ev.environment_name, ev.version
+	`, middleware.UserID(c))
+	if err != nil {
+		log.Printf("validate environments: %v", err)
+		errorJSON(c, http.StatusInternalServerError, "failed to validate environments")
+		return
+	}
+	defer rows.Close()
+
+	versions := make([]envValidationItem, 0)
+	for rows.Next() {
+		var item envValidationItem
+		var payload string
+		var createdAt time.Time
+		if err := rows.Scan(&item.ProjectSlug, &item.Environment, &item.Version, &item.Checksum, &payload, &createdAt); err != nil {
+			errorJSON(c, http.StatusInternalServerError, "failed to read versions")
+			return
+		}
+		item.CreatedAt = createdAt.Format(time.RFC3339)
+		item.Valid = validEnvelope(payload)
+		if !item.Valid {
+			item.Reason = envelopeValidationError(payload)
+		}
 		versions = append(versions, item)
 	}
 	if err := rows.Err(); err != nil {

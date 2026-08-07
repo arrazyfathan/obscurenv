@@ -286,6 +286,7 @@ Authorization: Bearer <API_TOKEN>
 | GET | `/api/v1/env/pull?project=&environment=` | Bearer | Pull latest (or a specific) environment |
 | GET | `/api/v1/env/list?project=` | Bearer | List environment names |
 | GET | `/api/v1/env/versions?project=&environment=` | Bearer | List version history |
+| GET | `/api/v1/env/validate` | Bearer | Diagnostic: envelope validity per version (payloads omitted) |
 | DELETE | `/api/v1/env?project=&environment=` | Bearer | Delete an environment |
 | GET | `/api/v1/user/profile` | Bearer | Get profile |
 | PATCH | `/api/v1/user/profile` | Bearer | Update username |

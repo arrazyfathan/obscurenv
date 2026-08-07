@@ -62,6 +62,7 @@ func main() {
 	protected.GET("/env/pull", envHandler.Pull)
 	protected.GET("/env/list", envHandler.List)
 	protected.GET("/env/versions", envHandler.Versions)
+	protected.GET("/env/validate", envHandler.ValidateList)
 	protected.GET("/env/export", envHandler.Export)
 	protected.DELETE("/env", envHandler.Delete)
 	protected.GET("/activity", activityHandler.List)

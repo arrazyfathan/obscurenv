@@ -68,11 +68,39 @@ func TestValidEnvelope(t *testing.T) {
 		{"missing ciphertext", `{"version":2,"ciphertext":""}`, false},
 		{"not json", "hello world", false},
 		{"unsupported version", `{"version":9,"ciphertext":"YWJj"}`, false},
+		{"wrong kdf", `{"version":2,"kdf":"scrypt","ciphertext":"YWJj","key_slots":{"passphrase":{"kdf":"argon2id","salt":"c2FsdA==","wrapped_key":"d3JhcHBlZA=="}}}`, false},
+		{"v2 missing key slot", `{"version":2,"kdf":"argon2id","ciphertext":"YWJj"}`, false},
+		{"v2 empty wrapped key", `{"version":2,"kdf":"argon2id","ciphertext":"YWJj","key_slots":{"passphrase":{"kdf":"argon2id","salt":"c2FsdA==","wrapped_key":""}}}`, false},
+		{"v2 slot wrong kdf", `{"version":2,"kdf":"argon2id","ciphertext":"YWJj","key_slots":{"passphrase":{"kdf":"scrypt","salt":"c2FsdA==","wrapped_key":"d3JhcHBlZA=="}}}`, false},
+		{"v1 missing salt", `{"version":1,"kdf":"argon2id","ciphertext":"YWJj"}`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := validEnvelope(tt.payload); got != tt.want {
 				t.Fatalf("validEnvelope(%q) = %v, want %v", tt.payload, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEnvelopeValidationError(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{"raw base64", "1a2b3c4d5e6f7g8h9i0j", "not a JSON object"},
+		{"not json", "hello world", "not a JSON object"},
+		{"invalid json", `{"version":2`, "invalid JSON"},
+		{"empty object", `{}`, "unsupported kdf"},
+		{"missing ciphertext", `{"version":2,"kdf":"argon2id"}`, "missing ciphertext"},
+		{"unsupported version", `{"version":9,"kdf":"argon2id","ciphertext":"YWJj"}`, "unsupported version"},
+		{"missing key slot", `{"version":2,"kdf":"argon2id","ciphertext":"YWJj"}`, "passphrase key slot missing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := envelopeValidationError(tt.payload); got != tt.want {
+				t.Fatalf("envelopeValidationError(%q) = %q, want %q", tt.payload, got, tt.want)
 			}
 		})
 	}
