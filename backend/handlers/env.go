@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -269,6 +270,7 @@ func (h *EnvHandler) Export(c *gin.Context) {
 		ORDER BY environment_name
 	`, middleware.UserID(c), projectSlug)
 	if err != nil {
+		log.Printf("export environments: %v", err)
 		errorJSON(c, http.StatusInternalServerError, "failed to export environments")
 		return
 	}
