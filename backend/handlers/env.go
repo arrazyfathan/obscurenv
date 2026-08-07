@@ -4,14 +4,18 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/obscurenv/obscurenv/backend/middleware"
 	"github.com/obscurenv/obscurenv/backend/models"
 )
+
+const supportedEnvelopeVersion = 2
 
 type EnvHandler struct {
 	db *sql.DB
@@ -37,6 +41,10 @@ func (h *EnvHandler) Push(c *gin.Context) {
 	sum := sha256.Sum256([]byte(req.EncryptedPayload))
 	if req.Checksum != hex.EncodeToString(sum[:]) {
 		badRequest(c, "checksum does not match encrypted payload")
+		return
+	}
+	if !validEnvelope(req.EncryptedPayload) {
+		badRequest(c, "encrypted payload is not a valid envelope")
 		return
 	}
 	userID := middleware.UserID(c)
@@ -85,6 +93,20 @@ func (h *EnvHandler) Push(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Pushed successfully", "version": version})
+}
+
+func validEnvelope(payload string) bool {
+	envelope := struct {
+		Version    int    `json:"version"`
+		Ciphertext string `json:"ciphertext"`
+	}{}
+	if !strings.HasPrefix(strings.TrimSpace(payload), "{") {
+		return false
+	}
+	if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
+		return false
+	}
+	return (envelope.Version == 1 || envelope.Version == supportedEnvelopeVersion) && envelope.Ciphertext != ""
 }
 
 func (h *EnvHandler) Pull(c *gin.Context) {
