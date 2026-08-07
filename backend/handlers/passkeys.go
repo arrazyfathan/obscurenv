@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/obscurenv/obscurenv/backend/middleware"
 )
@@ -77,7 +78,9 @@ func (h *AuthHandler) PasskeyRegisterOptions(c *gin.Context) {
 		errorJSON(c, http.StatusNotFound, "user not found")
 		return
 	}
-	options, session, err := h.passkey.BeginRegistration(user)
+	options, session, err := h.passkey.BeginRegistration(user, webauthn.WithExtensions(protocol.AuthenticationExtensions{
+		"prf": map[string]any{},
+	}))
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to create passkey challenge")
 		return

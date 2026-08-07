@@ -302,6 +302,7 @@ payloads, never plaintext env values or passphrases.
 - Backend stores encrypted payloads as opaque text.
 - API tokens are hashed in the database.
 - Passkeys are used for authentication only; env payload decryption still requires the local encryption passphrase.
+- Version 2 payloads may include a browser biometric key slot, but the CLI always uses the passphrase recovery slot and never receives biometric material.
 - Decrypt failure exits without modifying the existing `.env`.
 - `obe run` injects variables through process environment and does not write decrypted content to disk.
 
