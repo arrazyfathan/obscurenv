@@ -15,21 +15,29 @@ import (
 )
 
 const (
-	ActionProjectCreated  = "project.created"
-	ActionProjectDeleted  = "project.deleted"
-	ActionProjectRenamed  = "project.renamed"
-	ActionProjectExported = "project.exported"
-	ActionEnvPushed       = "env.pushed"
-	ActionEnvDeleted      = "env.deleted"
+	ActionProjectCreated     = "project.created"
+	ActionProjectDeleted     = "project.deleted"
+	ActionProjectRenamed     = "project.renamed"
+	ActionProjectExported    = "project.exported"
+	ActionTransferRequested  = "project.transfer_requested"
+	ActionTransferCanceled   = "project.transfer_canceled"
+	ActionTransferDeclined   = "project.transfer_declined"
+	ActionProjectTransferred = "project.transferred"
+	ActionEnvPushed          = "env.pushed"
+	ActionEnvDeleted         = "env.deleted"
 )
 
 var activityActions = map[string]bool{
-	ActionProjectCreated:  true,
-	ActionProjectDeleted:  true,
-	ActionProjectRenamed:  true,
-	ActionProjectExported: true,
-	ActionEnvPushed:       true,
-	ActionEnvDeleted:      true,
+	ActionProjectCreated:     true,
+	ActionProjectDeleted:     true,
+	ActionProjectRenamed:     true,
+	ActionProjectExported:    true,
+	ActionTransferRequested:  true,
+	ActionTransferCanceled:   true,
+	ActionTransferDeclined:   true,
+	ActionProjectTransferred: true,
+	ActionEnvPushed:          true,
+	ActionEnvDeleted:         true,
 }
 
 type activityExecer interface {

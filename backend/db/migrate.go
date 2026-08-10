@@ -81,6 +81,26 @@ CREATE TABLE IF NOT EXISTS projects (
     UNIQUE(user_id, slug)
 );
 
+CREATE TABLE IF NOT EXISTS project_transfers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    sender_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP WITH TIME ZONE,
+    CHECK (status IN ('pending', 'accepted', 'declined', 'canceled', 'expired')),
+    CHECK (sender_user_id <> recipient_user_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS project_transfers_one_pending_idx
+    ON project_transfers (project_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS project_transfers_recipient_idx
+    ON project_transfers (recipient_user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS project_transfers_sender_idx
+    ON project_transfers (sender_user_id, status, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS env_versions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     project_id UUID REFERENCES projects(id) ON DELETE CASCADE,

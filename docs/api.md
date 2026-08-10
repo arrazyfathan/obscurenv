@@ -105,6 +105,11 @@ All routes under `/api/v1`:
 | POST | `/projects` | Bearer | Create a project |
 | GET | `/projects/{slug}` | Bearer | Get project + latest environments |
 | DELETE | `/projects/{slug}` | Bearer | Delete project and its environments |
+| POST | `/projects/{slug}/transfers` | Bearer | Invite an existing username/email to take ownership |
+| GET | `/project-transfers` | Bearer | List incoming and outgoing project invitations |
+| POST | `/project-transfers/{id}/accept` | Bearer | Accept an incoming project invitation |
+| POST | `/project-transfers/{id}/decline` | Bearer | Decline an incoming project invitation |
+| DELETE | `/project-transfers/{id}` | Bearer | Cancel an outgoing project invitation |
 | POST | `/env/push` | Bearer | Store an encrypted environment (new version) |
 | GET | `/env/pull` | Bearer | Pull latest (or `?version=N`) environment |
 | GET | `/env/list` | Bearer | List environment names for a project |
@@ -154,6 +159,13 @@ Response:
 `total` counts all matching rows (ignores `limit`/`offset`). `project_slug`
 and `environment_name` are denormalized, so entries survive project or
 environment deletion.
+
+Project transfers are invitation-based. The sender must provide the exact
+project slug as confirmation. The recipient accepts within seven days; the
+project remains with the sender until then. Acceptance updates only the
+project owner, leaves encrypted payloads untouched, and does not transfer a
+passphrase or decryption key. The recipient must receive that secret through a
+separate secure channel.
 
 ## Envelope validation diagnostic
 
