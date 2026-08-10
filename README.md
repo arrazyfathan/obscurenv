@@ -130,7 +130,7 @@ Precedence:
 
 Local files:
 
-- `.obe.json`: project config created by `obe init`.
+- `.obe.json`: project config created by `obe init`; it includes the immutable project ID so a transferred project cannot be confused with a newly created project using the same slug.
 - `~/.obe/credentials.json`: API token and API URL created by `obe login`.
 - `.env`: plaintext env file; do not commit it.
 - `local.properties`: supported plaintext Android/Gradle properties file; do not commit it. Machine-specific keys (currently `sdk.dir`) are never uploaded: they are stripped before push and preserved from your local file on pull.
@@ -144,6 +144,7 @@ Managed file selection:
 - If both `.env` and `local.properties` exist, pass `--file` to choose one.
 - `obe pull` defaults to `.env` when no local managed file exists yet.
 - Successful `obe push`, `obe pull`, and `obe use` operations remember the resolved file in `.obe.json` as `env_file`.
+- If a linked project is transferred away, `obe status` reports lost access and remote commands stop without changing local files. Run `obe init --relink --project <slug>` to deliberately relink the directory.
 
 Recommended `.gitignore` for projects using Obscurenv:
 

@@ -15,13 +15,16 @@ var initProjectName string
 var initCreateProject bool
 var initEnvironment string
 var initFile string
+var initRelink bool
 
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Connect the current directory to an Obscurenv project",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if config, err := readProjectConfigIfPresent(); err == nil {
-			return reportExistingInit(cmd, config)
+			if !initRelink {
+				return reportExistingInit(cmd, config)
+			}
 		} else if !isMissingProjectConfig(err) {
 			return err
 		}
@@ -51,7 +54,7 @@ var initCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			if err := writeInitConfig(linked.Slug, environment); err != nil {
+			if err := writeInitConfig(linked.Slug, environment, linked.ID); err != nil {
 				return err
 			}
 			success(cmd.OutOrStdout(), fmt.Sprintf("Linked local config to remote project %q.", linked.Slug))
@@ -84,7 +87,7 @@ var initCmd = &cobra.Command{
 		} else {
 			info(cmd.OutOrStdout(), fmt.Sprintf("Remote project %q already exists; linked local config.", project))
 		}
-		if err := writeInitConfig(project, environment); err != nil {
+		if err := writeInitConfig(project, environment, resp.ID); err != nil {
 			return err
 		}
 		success(cmd.OutOrStdout(), fmt.Sprintf("Created %s for project %q using %q.", projectConfigFile, project, environment))
@@ -106,12 +109,21 @@ func reportExistingInit(cmd *cobra.Command, config *ProjectConfig) error {
 		fmt.Fprintf(out, "Remote: unavailable (%v)\n", err)
 		return nil
 	}
-	if _, err := linkExistingProject(client, config.ProjectSlug); err != nil {
+	project, err := linkExistingProject(client, config.ProjectSlug)
+	if err != nil {
 		if api.IsStatus(err, http.StatusNotFound) {
-			fmt.Fprintln(out, "Remote: not linked")
+			fmt.Fprintln(out, "Remote: access lost; run obe init to relink")
 			return nil
 		}
 		fmt.Fprintf(out, "Remote: unavailable (%v)\n", err)
+		return nil
+	}
+	if config.ProjectID == "" {
+		fmt.Fprintln(out, "Remote: linked")
+		return nil
+	}
+	if project.ID != config.ProjectID {
+		fmt.Fprintln(out, "Remote: stale link; run obe init to relink")
 		return nil
 	}
 	fmt.Fprintln(out, "Remote: linked")
@@ -163,7 +175,7 @@ func chooseEnvironmentFromList(cmd *cobra.Command, environments []string, curren
 	return resolveEnvironmentChoice(value, environments)
 }
 
-func writeInitConfig(project, environment string) error {
+func writeInitConfig(project, environment string, projectIDs ...string) error {
 	envFile, err := resolveManagedFile(initFile, nil, false)
 	if err != nil {
 		return err
@@ -172,6 +184,9 @@ func writeInitConfig(project, environment string) error {
 		ProjectSlug:       project,
 		ActiveEnvironment: environment,
 		EnvFile:           envFile,
+	}
+	if len(projectIDs) > 0 {
+		config.ProjectID = projectIDs[0]
 	}
 	if err := saveProjectConfig(config); err != nil {
 		return err
@@ -231,6 +246,7 @@ func init() {
 	initCmd.Flags().StringVar(&initProjectName, "name", "", "Project display name when creating it remotely")
 	initCmd.Flags().StringVarP(&initEnvironment, "env", "e", "", "Initial active environment")
 	initCmd.Flags().StringVar(&initFile, "file", "", "Managed local file path, such as .env or local.properties")
+	initCmd.Flags().BoolVar(&initRelink, "relink", false, "Replace the existing local project link")
 	initCmd.Flags().BoolVar(&initCreateProject, "create", false, "Accepted for compatibility; missing projects are created during init")
 }
 

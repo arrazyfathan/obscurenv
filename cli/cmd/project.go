@@ -34,6 +34,9 @@ var projectRenameCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			if _, err := requireLinkedProject(config); err != nil {
+				return err
+			}
 			slug = config.ProjectSlug
 		}
 		client, err := loadClient()
@@ -80,6 +83,9 @@ func projectSlugForDelete(args []string) (string, error) {
 	}
 	config, err := loadProjectConfig()
 	if err != nil {
+		return "", err
+	}
+	if _, err := requireLinkedProject(config); err != nil {
 		return "", err
 	}
 	return config.ProjectSlug, nil

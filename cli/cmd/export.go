@@ -22,6 +22,9 @@ var exportCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			if _, err := requireLinkedProject(config); err != nil {
+				return err
+			}
 			slug = config.ProjectSlug
 		}
 		passphrase, err := promptSecret("Encryption passphrase", exportKey)

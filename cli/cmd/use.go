@@ -32,6 +32,9 @@ var useListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if _, err := requireLinkedProject(config); err != nil {
+			return err
+		}
 		environments, err := listRemoteEnvironments(config.ProjectSlug)
 		if err != nil {
 			return err
@@ -46,6 +49,9 @@ var useListCmd = &cobra.Command{
 func runUse(cmd *cobra.Command, target string) error {
 	config, err := loadProjectConfig()
 	if err != nil {
+		return err
+	}
+	if _, err := requireLinkedProject(config); err != nil {
 		return err
 	}
 	file, err := resolveManagedFile(useFile, config, usePushCurrent)

@@ -20,6 +20,9 @@ var pullCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if _, err := requireLinkedProject(config); err != nil {
+			return err
+		}
 		environment := resolveEnvironment(pullEnv, config)
 		file, err := resolveManagedFile(pullFile, config, false)
 		if err != nil {
@@ -56,6 +59,9 @@ func pullEnvironment(environment, passphrase, file string, writeFile bool) ([]by
 	}
 	config, err := loadProjectConfig()
 	if err != nil {
+		return nil, err
+	}
+	if _, err := requireLinkedProject(config); err != nil {
 		return nil, err
 	}
 	client, err := loadClient()

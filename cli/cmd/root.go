@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,9 +20,40 @@ const (
 )
 
 type ProjectConfig struct {
+	ProjectID         string `json:"project_id,omitempty"`
 	ProjectSlug       string `json:"project_slug"`
 	ActiveEnvironment string `json:"active_environment"`
 	EnvFile           string `json:"env_file,omitempty"`
+}
+
+func validateLinkedProject(config *ProjectConfig, client *api.Client) (*api.ProjectResponse, error) {
+	if config.ProjectID == "" {
+		// Legacy configs are still accepted for backward compatibility. They are
+		// checked by slug, while newly written configs are bound to the UUID.
+		return nil, nil
+	}
+	project, err := client.GetProject(config.ProjectSlug)
+	if err != nil {
+		if api.IsStatus(err, http.StatusNotFound) {
+			return nil, fmt.Errorf("project %q is no longer owned by this account; run obe init to relink this directory", config.ProjectSlug)
+		}
+		return nil, err
+	}
+	if project.ID != config.ProjectID {
+		return nil, fmt.Errorf("project link for %q is stale; run obe init to relink this directory", config.ProjectSlug)
+	}
+	return project, nil
+}
+
+func requireLinkedProject(config *ProjectConfig) (*api.Client, error) {
+	client, err := loadClient()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := validateLinkedProject(config, client); err != nil {
+		return nil, err
+	}
+	return client, nil
 }
 
 type Credentials struct {

@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
+	"github.com/obscurenv/obscurenv/cli/pkg/api"
 	"github.com/spf13/cobra"
 )
 
@@ -53,6 +55,26 @@ var statusCmd = &cobra.Command{
 			rows = append(rows, []string{"Remote envs", "unavailable (" + err.Error() + ")"})
 			printTable(out, []string{"Key", "Value"}, rows)
 			return nil
+		}
+		project, err := validateLinkedProject(config, client)
+		if err != nil {
+			if config.ProjectID == "" {
+				rows = append(rows, []string{"Remote project", err.Error()})
+			} else if api.IsStatus(err, http.StatusNotFound) || strings.Contains(err.Error(), "no longer owned") {
+				rows = append(rows, []string{"Remote project", "access lost; run obe init to relink"})
+			} else {
+				rows = append(rows, []string{"Remote project", err.Error()})
+			}
+			printTable(out, []string{"Key", "Value"}, rows)
+			if strings.Contains(err.Error(), "access lost") || strings.Contains(err.Error(), "stale") {
+				return err
+			}
+			return nil
+		}
+		if config.ProjectID == "" {
+			rows = append(rows, []string{"Remote project", "legacy link; run obe init --relink --project " + config.ProjectSlug})
+		} else if project == nil {
+			rows = append(rows, []string{"Remote project", "unavailable"})
 		}
 		resp, err := client.List(config.ProjectSlug)
 		if err != nil {

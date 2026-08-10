@@ -25,8 +25,14 @@ var envListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if _, err := validateLinkedProject(config, client); err != nil {
+			return err
+		}
 		resp, err := client.List(config.ProjectSlug)
 		if err != nil {
+			return err
+		}
+		if _, err := validateLinkedProject(config, client); err != nil {
 			return err
 		}
 		for _, environment := range resp.Environments {
@@ -64,12 +70,18 @@ var envDeleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if _, err := requireLinkedProject(config); err != nil {
+			return err
+		}
 		environment := args[0]
 		if err := confirmRemoteDeletion(envDeleteYes, fmt.Sprintf("Delete remote environment %q from project %q?", environment, config.ProjectSlug)); err != nil {
 			return err
 		}
 		client, err := loadClient()
 		if err != nil {
+			return err
+		}
+		if _, err := validateLinkedProject(config, client); err != nil {
 			return err
 		}
 		if err := client.DeleteEnvironment(config.ProjectSlug, environment); err != nil {

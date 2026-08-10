@@ -24,6 +24,9 @@ var pushCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if _, err := requireLinkedProject(config); err != nil {
+			return err
+		}
 		environment := resolveEnvironment(pushEnv, config)
 		file, err := resolvePushManagedFile(pushFile, args, config)
 		if err != nil {
@@ -80,6 +83,9 @@ func pushEnvironment(environment, passphrase, file string) (int, error) {
 	}
 	config, err := loadProjectConfig()
 	if err != nil {
+		return 0, err
+	}
+	if _, err := requireLinkedProject(config); err != nil {
 		return 0, err
 	}
 	plaintext, err := os.ReadFile(file)
