@@ -136,7 +136,7 @@ Query parameters:
 | `limit` | 50 | Items to return (1–100) |
 | `offset` | 0 | Items to skip |
 | `project` | – | Filter by project slug |
-| `action` | – | `project.created`, `project.deleted`, `env.pushed`, `env.deleted` |
+| `action` | – | Any project, sharing, transfer, or environment action documented by `ActivityItem` |
 
 Response:
 
@@ -159,6 +159,10 @@ Response:
 `total` counts all matching rows (ignores `limit`/`offset`). `project_slug`
 and `environment_name` are denormalized, so entries survive project or
 environment deletion.
+
+Sharing and transfer activity is written for both affected accounts. Its
+metadata contains `direction` (`incoming` or `outgoing`) and a privacy-safe
+`counterparty` such as `@alice` or `a***@example.com`.
 
 Project transfers are invitation-based. The sender must provide the exact
 project slug as confirmation. The recipient accepts within seven days; the

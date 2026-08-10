@@ -151,7 +151,7 @@ Query params:
 | `limit` | 50 | 1–100 |
 | `offset` | 0 | Rows to skip |
 | `project` | – | Filter by project slug |
-| `action` | – | `project.created`, `project.deleted`, `project.renamed`, `env.pushed`, `env.deleted` |
+| `action` | – | Any project, sharing, transfer, or environment activity action |
 | `from` / `to` | – | RFC3339 time range |
 | `cursor` | – | Opaque cursor from `next_cursor` |
 
@@ -176,3 +176,8 @@ Response:
 
 Paginate with `cursor` when present; `total` counts all matching rows
 (ignoring `limit`/`offset`).
+
+For sharing and transfer events, use `metadata.direction` and
+`metadata.counterparty` to render the sentence from the current user's
+perspective. Counterparty values are safe display labels (`@username` or a
+masked email address).

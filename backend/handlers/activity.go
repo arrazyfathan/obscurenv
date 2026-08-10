@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -70,6 +71,17 @@ func recordActivity(ctx context.Context, db activityExecer, userID, projectID, a
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, userID, nullIfEmpty(projectID), action, nullIfEmpty(slug), nullIfEmpty(env), payload)
 	return err
+}
+
+func activityAccountLabel(username sql.NullString, email string) string {
+	if username.Valid && strings.TrimSpace(username.String) != "" {
+		return "@" + strings.TrimSpace(username.String)
+	}
+	return maskEmail(email)
+}
+
+func counterpartMetadata(direction, counterparty string) gin.H {
+	return gin.H{"direction": direction, "counterparty": counterparty}
 }
 
 type ActivityHandler struct {

@@ -33,10 +33,7 @@ type transferAccount struct {
 }
 
 func (account transferAccount) Label() string {
-	if account.Username.Valid && account.Username.String != "" {
-		return account.Username.String
-	}
-	return account.Email
+	return activityAccountLabel(account.Username, account.Email)
 }
 
 type projectTransferSummary struct {
@@ -151,12 +148,12 @@ func (h *projectTransferHandler) Create(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, "failed to create transfer")
 		return
 	}
-	metadata := gin.H{"direction": "outgoing", "counterparty": recipient.Label()}
+	metadata := counterpartMetadata("outgoing", recipient.Label())
 	if err := recordActivity(c.Request.Context(), tx, userID, project.ID, ActionTransferRequested, project.Slug, "", metadata); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to record transfer activity")
 		return
 	}
-	if err := recordActivity(c.Request.Context(), tx, recipient.ID, project.ID, ActionTransferRequested, project.Slug, "", gin.H{"direction": "incoming", "counterparty": projectOwnerLabel(c, tx, userID)}); err != nil {
+	if err := recordActivity(c.Request.Context(), tx, recipient.ID, project.ID, ActionTransferRequested, project.Slug, "", counterpartMetadata("incoming", projectOwnerLabel(c, tx, userID))); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to record transfer activity")
 		return
 	}
@@ -249,11 +246,11 @@ func (h *projectTransferHandler) Accept(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, "failed to resolve transfer")
 		return
 	}
-	if err := recordActivity(c.Request.Context(), tx, sender.ID, project.ID, ActionProjectTransferred, project.Slug, "", gin.H{"direction": "outgoing", "counterparty": recipient.Label()}); err != nil {
+	if err := recordActivity(c.Request.Context(), tx, sender.ID, project.ID, ActionProjectTransferred, project.Slug, "", counterpartMetadata("outgoing", recipient.Label())); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to record transfer activity")
 		return
 	}
-	if err := recordActivity(c.Request.Context(), tx, recipient.ID, project.ID, ActionProjectTransferred, project.Slug, "", gin.H{"direction": "incoming", "counterparty": sender.Label()}); err != nil {
+	if err := recordActivity(c.Request.Context(), tx, recipient.ID, project.ID, ActionProjectTransferred, project.Slug, "", counterpartMetadata("incoming", sender.Label())); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to record transfer activity")
 		return
 	}
@@ -318,7 +315,7 @@ func (h *projectTransferHandler) resolve(c *gin.Context, status string, senderAc
 	if senderAction {
 		action = ActionTransferCanceled
 	}
-	actorMetadata := gin.H{"direction": map[bool]string{true: "outgoing", false: "incoming"}[senderAction], "counterparty": map[bool]string{true: recipient.Label(), false: sender.Label()}[senderAction]}
+	actorMetadata := counterpartMetadata(map[bool]string{true: "outgoing", false: "incoming"}[senderAction], map[bool]string{true: recipient.Label(), false: sender.Label()}[senderAction])
 	if err := recordActivity(c.Request.Context(), tx, userID, project.ID, action, project.Slug, "", actorMetadata); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to record transfer activity")
 		return
@@ -329,7 +326,7 @@ func (h *projectTransferHandler) resolve(c *gin.Context, status string, senderAc
 		otherID = sender.ID
 		otherDirection = "outgoing"
 	}
-	if err := recordActivity(c.Request.Context(), tx, otherID, project.ID, action, project.Slug, "", gin.H{"direction": otherDirection, "counterparty": map[bool]string{true: recipient.Label(), false: sender.Label()}[!senderAction]}); err != nil {
+	if err := recordActivity(c.Request.Context(), tx, otherID, project.ID, action, project.Slug, "", counterpartMetadata(otherDirection, map[bool]string{true: recipient.Label(), false: sender.Label()}[!senderAction])); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to record transfer activity")
 		return
 	}

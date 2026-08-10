@@ -181,8 +181,9 @@ func (h *SharingHandler) CreateInvitation(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback()
-	var lockedUserID string
-	if err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM users WHERE id = $1 FOR UPDATE`, req.RecipientUserID).Scan(&lockedUserID); err != nil {
+	var lockedUserID, recipientEmail string
+	var recipientUsername sql.NullString
+	if err = tx.QueryRowContext(c.Request.Context(), `SELECT id, username, email FROM users WHERE id = $1 FOR UPDATE`, req.RecipientUserID).Scan(&lockedUserID, &recipientUsername, &recipientEmail); err != nil {
 		errorJSON(c, http.StatusNotFound, "account not found")
 		return
 	}
@@ -216,7 +217,13 @@ func (h *SharingHandler) CreateInvitation(c *gin.Context) {
 		errorJSON(c, http.StatusConflict, "a pending invitation already exists")
 		return
 	}
-	if err := recordActivity(c.Request.Context(), tx, userID, access.ProjectID, ActionShareInvited, c.Param("slug"), "", nil); err != nil {
+	recipientLabel := activityAccountLabel(recipientUsername, recipientEmail)
+	ownerLabel := projectOwnerLabel(c, tx, userID)
+	if err := recordActivity(c.Request.Context(), tx, userID, access.ProjectID, ActionShareInvited, c.Param("slug"), "", counterpartMetadata("outgoing", recipientLabel)); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, req.RecipientUserID, access.ProjectID, ActionShareInvited, c.Param("slug"), "", counterpartMetadata("incoming", ownerLabel)); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
 		return
 	}
@@ -344,9 +351,19 @@ func (h *SharingHandler) resolveInvitation(c *gin.Context, result string) {
 		return
 	}
 	defer tx.Rollback()
-	var status, projectID, slug, ownerID string
+	var status, projectID, slug, ownerID, recipientID, ownerEmail, recipientEmail string
+	var ownerUsername, recipientUsername sql.NullString
 	var expires time.Time
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT si.status, si.project_id, p.slug, p.user_id, si.expires_at FROM project_share_invitations si JOIN projects p ON p.id = si.project_id WHERE si.id = $1 AND si.recipient_user_id = $2 FOR UPDATE`, c.Param("id"), middleware.UserID(c)).Scan(&status, &projectID, &slug, &ownerID, &expires)
+	err = tx.QueryRowContext(c.Request.Context(), `
+		SELECT si.status, si.project_id, p.slug, si.sender_user_id, si.recipient_user_id, si.expires_at,
+		       sender.username, sender.email, recipient.username, recipient.email
+		FROM project_share_invitations si
+		JOIN projects p ON p.id = si.project_id
+		JOIN users sender ON sender.id = si.sender_user_id
+		JOIN users recipient ON recipient.id = si.recipient_user_id
+		WHERE si.id = $1 AND si.recipient_user_id = $2
+		FOR UPDATE
+	`, c.Param("id"), middleware.UserID(c)).Scan(&status, &projectID, &slug, &ownerID, &recipientID, &expires, &ownerUsername, &ownerEmail, &recipientUsername, &recipientEmail)
 	if errors.Is(err, sql.ErrNoRows) {
 		errorJSON(c, http.StatusNotFound, "invitation not found")
 		return
@@ -383,7 +400,13 @@ func (h *SharingHandler) resolveInvitation(c *gin.Context, result string) {
 	if result == shareAccepted {
 		action = ActionShareAccepted
 	}
-	if err := recordActivity(c.Request.Context(), tx, middleware.UserID(c), projectID, action, slug, "", nil); err != nil {
+	ownerLabel := activityAccountLabel(ownerUsername, ownerEmail)
+	recipientLabel := activityAccountLabel(recipientUsername, recipientEmail)
+	if err := recordActivity(c.Request.Context(), tx, recipientID, projectID, action, slug, "", counterpartMetadata("incoming", ownerLabel)); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, ownerID, projectID, action, slug, "", counterpartMetadata("outgoing", recipientLabel)); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
 		return
 	}
@@ -395,14 +418,47 @@ func (h *SharingHandler) resolveInvitation(c *gin.Context, result string) {
 }
 
 func (h *SharingHandler) Cancel(c *gin.Context) {
-	result, err := h.db.ExecContext(c.Request.Context(), `UPDATE project_share_invitations si SET status = 'canceled', resolved_at = CURRENT_TIMESTAMP FROM projects p WHERE si.id = $1 AND si.project_id = p.id AND p.user_id = $2 AND si.status = 'pending'`, c.Param("id"), middleware.UserID(c))
+	userID := middleware.UserID(c)
+	tx, err := h.db.BeginTx(c.Request.Context(), nil)
 	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback()
+
+	var projectID, slug, recipientID, recipientEmail, ownerEmail string
+	var recipientUsername, ownerUsername sql.NullString
+	err = tx.QueryRowContext(c.Request.Context(), `
+		SELECT si.project_id, p.slug, si.recipient_user_id, recipient.username, recipient.email, owner.username, owner.email
+		FROM project_share_invitations si
+		JOIN projects p ON p.id = si.project_id
+		JOIN users recipient ON recipient.id = si.recipient_user_id
+		JOIN users owner ON owner.id = p.user_id
+		WHERE si.id = $1 AND p.user_id = $2 AND si.status = 'pending'
+		FOR UPDATE
+	`, c.Param("id"), userID).Scan(&projectID, &slug, &recipientID, &recipientUsername, &recipientEmail, &ownerUsername, &ownerEmail)
+	if errors.Is(err, sql.ErrNoRows) {
+		errorJSON(c, http.StatusNotFound, "invitation not found")
+		return
+	}
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to read invitation")
+		return
+	}
+	if _, err := tx.ExecContext(c.Request.Context(), `UPDATE project_share_invitations SET status = 'canceled', resolved_at = CURRENT_TIMESTAMP WHERE id = $1`, c.Param("id")); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to cancel invitation")
 		return
 	}
-	count, _ := result.RowsAffected()
-	if count == 0 {
-		errorJSON(c, http.StatusNotFound, "invitation not found")
+	if err := recordActivity(c.Request.Context(), tx, userID, projectID, ActionShareCanceled, slug, "", counterpartMetadata("outgoing", activityAccountLabel(recipientUsername, recipientEmail))); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, recipientID, projectID, ActionShareCanceled, slug, "", counterpartMetadata("incoming", activityAccountLabel(ownerUsername, ownerEmail))); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to cancel invitation")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "invitation canceled"})
@@ -417,14 +473,45 @@ func (h *SharingHandler) RemoveMember(c *gin.Context) {
 		badRequest(c, "project owner cannot be removed")
 		return
 	}
-	result, err := h.db.ExecContext(c.Request.Context(), `DELETE FROM project_members WHERE project_id = $1 AND user_id = $2`, access.ProjectID, c.Param("user_id"))
+	tx, err := h.db.BeginTx(c.Request.Context(), nil)
 	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback()
+
+	var memberEmail, ownerEmail string
+	var memberUsername, ownerUsername sql.NullString
+	err = tx.QueryRowContext(c.Request.Context(), `
+		SELECT member.username, member.email, owner.username, owner.email
+		FROM project_members pm
+		JOIN users member ON member.id = pm.user_id
+		JOIN users owner ON owner.id = $3
+		WHERE pm.project_id = $1 AND pm.user_id = $2
+		FOR UPDATE
+	`, access.ProjectID, c.Param("user_id"), access.OwnerID).Scan(&memberUsername, &memberEmail, &ownerUsername, &ownerEmail)
+	if errors.Is(err, sql.ErrNoRows) {
+		errorJSON(c, http.StatusNotFound, "member not found")
+		return
+	}
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to read member")
+		return
+	}
+	if _, err := tx.ExecContext(c.Request.Context(), `DELETE FROM project_members WHERE project_id = $1 AND user_id = $2`, access.ProjectID, c.Param("user_id")); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to remove member")
 		return
 	}
-	count, _ := result.RowsAffected()
-	if count == 0 {
-		errorJSON(c, http.StatusNotFound, "member not found")
+	if err := recordActivity(c.Request.Context(), tx, access.OwnerID, access.ProjectID, ActionShareRemoved, c.Param("slug"), "", counterpartMetadata("outgoing", activityAccountLabel(memberUsername, memberEmail))); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, c.Param("user_id"), access.ProjectID, ActionShareRemoved, c.Param("slug"), "", counterpartMetadata("incoming", activityAccountLabel(ownerUsername, ownerEmail))); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to remove member")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "member removed"})
@@ -444,7 +531,45 @@ func (h *SharingHandler) Leave(c *gin.Context) {
 		badRequest(c, "project owner cannot leave")
 		return
 	}
-	if _, err := h.db.ExecContext(c.Request.Context(), `DELETE FROM project_members WHERE project_id = $1 AND user_id = $2`, access.ProjectID, middleware.UserID(c)); err != nil {
+	userID := middleware.UserID(c)
+	tx, err := h.db.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback()
+
+	var memberEmail, ownerEmail string
+	var memberUsername, ownerUsername sql.NullString
+	err = tx.QueryRowContext(c.Request.Context(), `
+		SELECT member.username, member.email, owner.username, owner.email
+		FROM project_members pm
+		JOIN users member ON member.id = pm.user_id
+		JOIN users owner ON owner.id = $3
+		WHERE pm.project_id = $1 AND pm.user_id = $2
+		FOR UPDATE
+	`, access.ProjectID, userID, access.OwnerID).Scan(&memberUsername, &memberEmail, &ownerUsername, &ownerEmail)
+	if errors.Is(err, sql.ErrNoRows) {
+		errorJSON(c, http.StatusNotFound, "membership not found")
+		return
+	}
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to read membership")
+		return
+	}
+	if _, err := tx.ExecContext(c.Request.Context(), `DELETE FROM project_members WHERE project_id = $1 AND user_id = $2`, access.ProjectID, userID); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to leave project")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, userID, access.ProjectID, ActionShareLeft, c.Param("slug"), "", counterpartMetadata("incoming", activityAccountLabel(ownerUsername, ownerEmail))); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), tx, access.OwnerID, access.ProjectID, ActionShareLeft, c.Param("slug"), "", counterpartMetadata("outgoing", activityAccountLabel(memberUsername, memberEmail))); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to leave project")
 		return
 	}

@@ -822,10 +822,11 @@ paths:
         first. Scoped to the authenticated user. This endpoint is API-only;
         the CLI has no activity command yet.
 
-        Actions: `project.created`, `project.deleted`, `project.renamed`,
-        `project.exported`, `env.pushed`, `env.deleted`. Metadata for
-        `project.exported` includes the exported environment count, while `env.pushed` includes the
-        stored `version`.
+        Actions cover project changes, sharing invitations and membership,
+        ownership transfers, and environment changes. Sharing and transfer
+        metadata includes `direction` and a privacy-safe `counterparty` label.
+        Metadata for `project.exported` includes the exported environment
+        count, while `env.pushed` includes the stored `version`.
       operationId: listActivity
       parameters:
         - name: limit
@@ -853,7 +854,7 @@ paths:
         - name: action
           in: query
           required: false
-          schema: { type: string, enum: [project.created, project.deleted, project.renamed, project.exported, env.pushed, env.deleted] }
+          schema: { $ref: '#/components/schemas/ActivityAction' }
           description: Filter by action
         - name: from
           in: query
@@ -1128,13 +1129,30 @@ components:
         username:
           type: [string, 'null']
         created_at: { type: string, format: date-time }
+    ActivityAction:
+      type: string
+      enum:
+        - project.created
+        - project.deleted
+        - project.renamed
+        - project.exported
+        - project.transfer_requested
+        - project.transfer_canceled
+        - project.transfer_declined
+        - project.transferred
+        - project.share_invited
+        - project.share_accepted
+        - project.share_declined
+        - project.share_canceled
+        - project.share_removed
+        - project.share_left
+        - env.pushed
+        - env.deleted
     ActivityItem:
       type: object
       properties:
         id: { type: string, format: uuid }
-        action:
-          type: string
-          enum: [project.created, project.deleted, project.renamed, project.exported, env.pushed, env.deleted]
+        action: { $ref: '#/components/schemas/ActivityAction' }
         project_slug:
           type: [string, 'null']
           description: Denormalized so the trail survives project deletion
@@ -1142,5 +1160,5 @@ components:
           type: [string, 'null']
         metadata:
           type: [object, 'null']
-          description: 'Action-specific details, e.g. `{"version": 4}` for env.pushed'
+          description: 'Action-specific details. Sharing and transfer events include `direction` (`incoming` or `outgoing`) and a privacy-safe `counterparty`; env.pushed includes `version`.'
         created_at: { type: string, format: date-time }
