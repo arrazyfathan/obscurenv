@@ -283,6 +283,15 @@ Authorization: Bearer <API_TOKEN>
 | POST | `/api/v1/projects` | Bearer | Create a project |
 | GET | `/api/v1/projects/:slug` | Bearer | Get project + latest environments |
 | DELETE | `/api/v1/projects/:slug` | Bearer | Delete a project |
+| GET | `/api/v1/projects/:slug/invite-candidates?q=` | Bearer | Search existing accounts for sharing |
+| POST | `/api/v1/projects/:slug/share-invitations` | Bearer | Invite an account to collaborate |
+| GET | `/api/v1/projects/:slug/access` | Bearer | List owner, members, and pending invites |
+| DELETE | `/api/v1/projects/:slug/members/:user_id` | Bearer | Revoke a collaborator |
+| DELETE | `/api/v1/projects/:slug/membership` | Bearer | Leave a shared project |
+| GET | `/api/v1/project-share-invitations` | Bearer | List incoming sharing invitations |
+| POST | `/api/v1/project-share-invitations/:id/accept` | Bearer | Accept a sharing invitation |
+| POST | `/api/v1/project-share-invitations/:id/decline` | Bearer | Decline a sharing invitation |
+| DELETE | `/api/v1/project-share-invitations/:id` | Bearer | Cancel an outgoing invitation |
 | POST | `/api/v1/env/push` | Bearer | Push an encrypted environment (new version) |
 | GET | `/api/v1/env/pull?project=&environment=` | Bearer | Pull latest (or a specific) environment |
 | GET | `/api/v1/env/list?project=` | Bearer | List environment names |

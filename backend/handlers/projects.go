@@ -30,14 +30,15 @@ type updateProjectNameRequest struct {
 }
 
 type projectSummary struct {
-	ID               string              `json:"id"`
-	Name             string              `json:"name"`
-	Slug             string              `json:"slug"`
-	CreatedAt        string              `json:"created_at"`
-	EnvironmentCount int                 `json:"environment_count"`
-	LatestVersion    *int                `json:"latest_version"`
-	LatestUpdatedAt  *string             `json:"latest_updated_at"`
+	ID               string               `json:"id"`
+	Name             string               `json:"name"`
+	Slug             string               `json:"slug"`
+	CreatedAt        string               `json:"created_at"`
+	EnvironmentCount int                  `json:"environment_count"`
+	LatestVersion    *int                 `json:"latest_version"`
+	LatestUpdatedAt  *string              `json:"latest_updated_at"`
 	Environments     []environmentSummary `json:"environments,omitempty"`
+	AccessLevel      string               `json:"access_level,omitempty"`
 }
 
 type environmentSummary struct {
@@ -104,6 +105,7 @@ func (h *ProjectHandler) List(c *gin.Context) {
 			errorJSON(c, http.StatusInternalServerError, "failed to read projects")
 			return
 		}
+		project.AccessLevel = projectAccessLevel(h.db, middleware.UserID(c), project.ID)
 		projects = append(projects, project)
 	}
 	if err := rows.Err(); err != nil {
@@ -173,7 +175,7 @@ func (h *ProjectHandler) latestEnvironmentsByProject(ctx context.Context, projec
 
 func listProjectsQuery(userID, search string) (string, []any) {
 	args := []any{userID}
-	where := "WHERE p.user_id = $1"
+	where := "WHERE (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1))"
 
 	search = strings.TrimSpace(search)
 	if search != "" {
@@ -233,7 +235,7 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 			MAX(ev.created_at) AS latest_updated_at
 		FROM projects p
 		LEFT JOIN env_versions ev ON ev.project_id = p.id
-		WHERE p.user_id = $1 AND p.slug = $2
+		WHERE (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)) AND p.slug = $2
 		GROUP BY p.id, p.name, p.slug, p.created_at
 	`, middleware.UserID(c), slug))
 	if err != nil {
@@ -255,7 +257,7 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 				) AS row_number
 			FROM env_versions ev
 			JOIN projects p ON p.id = ev.project_id
-			WHERE p.user_id = $1 AND p.slug = $2
+			WHERE (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)) AND p.slug = $2
 		) latest
 		WHERE row_number = 1
 		ORDER BY environment_name
@@ -290,7 +292,16 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 		"latest_version":    project.LatestVersion,
 		"latest_updated_at": project.LatestUpdatedAt,
 		"environments":      environments,
+		"access_level":      projectAccessLevel(h.db, middleware.UserID(c), project.ID),
 	})
+}
+
+func projectAccessLevel(db *sql.DB, userID, projectID string) string {
+	var owner string
+	if err := db.QueryRow(`SELECT user_id FROM projects WHERE id = $1`, projectID).Scan(&owner); err == nil && owner == userID {
+		return "owner"
+	}
+	return "collaborator"
 }
 
 func (h *ProjectHandler) Rename(c *gin.Context) {

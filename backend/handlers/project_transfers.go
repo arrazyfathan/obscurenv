@@ -229,7 +229,7 @@ func (h *projectTransferHandler) Accept(c *gin.Context) {
 		return
 	}
 	var collision bool
-	if err := tx.QueryRowContext(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM projects WHERE user_id = $1 AND slug = $2 AND id <> $3)`, userID, project.Slug, project.ID).Scan(&collision); err != nil {
+	if err := tx.QueryRowContext(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM projects WHERE user_id = $1 AND slug = $2 AND id <> $3 UNION ALL SELECT 1 FROM project_members pm JOIN projects p ON p.id = pm.project_id WHERE pm.user_id = $1 AND p.slug = $2 AND p.id <> $3)`, userID, project.Slug, project.ID).Scan(&collision); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to check project slug")
 		return
 	}
@@ -239,6 +239,10 @@ func (h *projectTransferHandler) Accept(c *gin.Context) {
 	}
 	if _, err := tx.ExecContext(c.Request.Context(), `UPDATE projects SET user_id = $2 WHERE id = $1`, project.ID, userID); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to transfer project")
+		return
+	}
+	if _, err := tx.ExecContext(c.Request.Context(), `UPDATE project_share_invitations SET status = 'canceled', resolved_at = CURRENT_TIMESTAMP WHERE project_id = $1 AND status = 'pending'`, project.ID); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to cancel sharing invitations")
 		return
 	}
 	if _, err := tx.ExecContext(c.Request.Context(), `UPDATE project_transfers SET status = $2, resolved_at = CURRENT_TIMESTAMP WHERE id = $1`, c.Param("id"), transferAccepted); err != nil {

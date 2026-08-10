@@ -77,7 +77,7 @@ func (h *EnvHandler) Push(c *gin.Context) {
 
 	var projectID string
 	err = tx.QueryRowContext(c.Request.Context(), `
-		SELECT id FROM projects WHERE user_id = $1 AND slug = $2
+		SELECT p.id FROM projects p WHERE p.slug = $2 AND (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1))
 	`, userID, req.ProjectSlug).Scan(&projectID)
 	if err != nil {
 		errorJSON(c, http.StatusNotFound, "project not found")
@@ -168,7 +168,7 @@ func (h *EnvHandler) Pull(c *gin.Context) {
 		SELECT p.slug, ev.environment_name, ev.version, ev.encrypted_payload, ev.checksum
 		FROM env_versions ev
 		JOIN projects p ON p.id = ev.project_id
-		WHERE p.user_id = $1 AND p.slug = $2 AND ev.environment_name = $3
+		WHERE (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)) AND p.slug = $2 AND ev.environment_name = $3
 	`
 	args := []any{middleware.UserID(c), projectSlug, environment}
 	if versionParam != "" {
@@ -206,7 +206,7 @@ func (h *EnvHandler) List(c *gin.Context) {
 		SELECT DISTINCT ev.environment_name
 		FROM env_versions ev
 		JOIN projects p ON p.id = ev.project_id
-		WHERE p.user_id = $1 AND p.slug = $2
+		WHERE (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)) AND p.slug = $2
 		ORDER BY ev.environment_name
 	`, middleware.UserID(c), projectSlug)
 	if err != nil {
@@ -251,7 +251,7 @@ func (h *EnvHandler) Versions(c *gin.Context) {
 		SELECT p.slug, ev.environment_name, ev.version, ev.checksum, ev.created_at
 		FROM env_versions ev
 		JOIN projects p ON p.id = ev.project_id
-		WHERE p.user_id = $1 AND p.slug = $2 AND ev.environment_name = $3
+		WHERE (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)) AND p.slug = $2 AND ev.environment_name = $3
 		ORDER BY ev.version DESC
 	`, middleware.UserID(c), projectSlug, environment)
 	if err != nil {
@@ -296,7 +296,7 @@ func (h *EnvHandler) ValidateList(c *gin.Context) {
 		SELECT p.slug, ev.environment_name, ev.version, ev.checksum, ev.encrypted_payload, ev.created_at
 		FROM env_versions ev
 		JOIN projects p ON p.id = ev.project_id
-		WHERE p.user_id = $1
+		WHERE (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1))
 		ORDER BY p.slug, ev.environment_name, ev.version
 	`, middleware.UserID(c))
 	if err != nil {
@@ -345,9 +345,15 @@ func (h *EnvHandler) Export(c *gin.Context) {
 	}
 
 	var projectID string
-	if err := h.db.QueryRowContext(c.Request.Context(), `
+	err := h.db.QueryRowContext(c.Request.Context(), `
 		SELECT id FROM projects WHERE user_id = $1 AND slug = $2
-	`, middleware.UserID(c), projectSlug).Scan(&projectID); err != nil {
+	`, middleware.UserID(c), projectSlug).Scan(&projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = h.db.QueryRowContext(c.Request.Context(), `
+			SELECT p.id FROM projects p WHERE p.slug = $2 AND EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)
+		`, middleware.UserID(c), projectSlug).Scan(&projectID)
+	}
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			errorJSON(c, http.StatusNotFound, "project not found")
 			return
@@ -371,7 +377,7 @@ func (h *EnvHandler) Export(c *gin.Context) {
 				) AS row_number
 			FROM env_versions ev
 			JOIN projects p ON p.id = ev.project_id
-			WHERE p.user_id = $1 AND p.slug = $2
+			WHERE (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)) AND p.slug = $2
 		) latest
 		WHERE row_number = 1
 		ORDER BY environment_name
@@ -426,7 +432,7 @@ func (h *EnvHandler) Delete(c *gin.Context) {
 
 	var projectID string
 	err = tx.QueryRowContext(c.Request.Context(), `
-		SELECT id FROM projects WHERE user_id = $1 AND slug = $2
+		SELECT p.id FROM projects p WHERE p.slug = $2 AND (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1))
 	`, userID, projectSlug).Scan(&projectID)
 	if err != nil {
 		errorJSON(c, http.StatusNotFound, "project not found")

@@ -94,6 +94,36 @@ CREATE TABLE IF NOT EXISTS project_transfers (
     CHECK (sender_user_id <> recipient_user_id)
 );
 
+CREATE TABLE IF NOT EXISTS project_members (
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    invited_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (project_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS project_members_user_idx ON project_members (user_id, joined_at DESC);
+
+CREATE TABLE IF NOT EXISTS project_share_invitations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    sender_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP WITH TIME ZONE,
+    CHECK (status IN ('pending', 'accepted', 'declined', 'canceled', 'expired')),
+    CHECK (sender_user_id <> recipient_user_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS project_share_one_pending_idx
+    ON project_share_invitations (project_id, recipient_user_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS project_share_recipient_idx
+    ON project_share_invitations (recipient_user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS project_share_sender_idx
+    ON project_share_invitations (sender_user_id, status, created_at DESC);
+
 CREATE UNIQUE INDEX IF NOT EXISTS project_transfers_one_pending_idx
     ON project_transfers (project_id) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS project_transfers_recipient_idx

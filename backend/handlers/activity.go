@@ -23,6 +23,12 @@ const (
 	ActionTransferCanceled   = "project.transfer_canceled"
 	ActionTransferDeclined   = "project.transfer_declined"
 	ActionProjectTransferred = "project.transferred"
+	ActionShareInvited       = "project.share_invited"
+	ActionShareAccepted      = "project.share_accepted"
+	ActionShareDeclined      = "project.share_declined"
+	ActionShareCanceled      = "project.share_canceled"
+	ActionShareRemoved       = "project.share_removed"
+	ActionShareLeft          = "project.share_left"
 	ActionEnvPushed          = "env.pushed"
 	ActionEnvDeleted         = "env.deleted"
 )
@@ -36,6 +42,12 @@ var activityActions = map[string]bool{
 	ActionTransferCanceled:   true,
 	ActionTransferDeclined:   true,
 	ActionProjectTransferred: true,
+	ActionShareInvited:       true,
+	ActionShareAccepted:      true,
+	ActionShareDeclined:      true,
+	ActionShareCanceled:      true,
+	ActionShareRemoved:       true,
+	ActionShareLeft:          true,
 	ActionEnvPushed:          true,
 	ActionEnvDeleted:         true,
 }
@@ -257,7 +269,7 @@ func (h *ActivityHandler) listFromDB(ctx context.Context, userID string, filter 
 
 func activityWhereClause(userID string, filter activityFilter) (string, []any) {
 	args := []any{userID}
-	where := "WHERE al.user_id = $1"
+	where := "/* WHERE al.user_id = $1 */ WHERE (al.user_id = $1 OR EXISTS (SELECT 1 FROM projects p WHERE p.id = al.project_id AND (p.user_id = $1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1))))"
 	if filter.ProjectSlug != "" {
 		args = append(args, filter.ProjectSlug)
 		where += " AND al.project_slug = $" + strconv.Itoa(len(args))
