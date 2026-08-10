@@ -344,7 +344,7 @@ func (h *EnvHandler) Export(c *gin.Context) {
 	}
 
 	rows, err := h.db.QueryContext(c.Request.Context(), `
-		SELECT ev.environment_name, ev.version, ev.checksum, ev.encrypted_payload, ev.created_at
+		SELECT latest.environment_name, latest.version, latest.checksum, latest.encrypted_payload, latest.created_at
 		FROM (
 			SELECT
 				ev.environment_name,

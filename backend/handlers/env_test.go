@@ -3,11 +3,14 @@ package handlers
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
 )
 
@@ -141,5 +144,57 @@ func TestExportRequiresProject(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "project is required") {
 		t.Fatalf("Export body = %q, want missing project error", rec.Body.String())
+	}
+}
+
+func TestExportReturnsLatestEnvironmentVersions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(`SELECT latest\.environment_name, latest\.version, latest\.checksum, latest\.encrypted_payload, latest\.created_at`).
+		WithArgs("user-1", "app").
+		WillReturnRows(sqlmock.NewRows([]string{"environment_name", "version", "checksum", "encrypted_payload", "created_at"}).
+			AddRow("production", 3, "sum-production", "payload-production", time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)).
+			AddRow("staging", 2, "sum-staging", "payload-staging", time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)))
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
+	router.GET("/api/v1/env/export", NewEnvHandler(db).Export)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/env/export?project=app", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Export returned %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response struct {
+		ProjectSlug  string `json:"project_slug"`
+		Environments []struct {
+			Environment string `json:"environment"`
+			Version     int    `json:"version"`
+		} `json:"environments"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode export response: %v", err)
+	}
+	if response.ProjectSlug != "app" || len(response.Environments) != 2 {
+		t.Fatalf("response = %+v, want project app with two environments", response)
+	}
+	if response.Environments[0].Environment != "production" || response.Environments[0].Version != 3 {
+		t.Fatalf("first environment = %+v, want production v3", response.Environments[0])
+	}
+	if response.Environments[1].Environment != "staging" || response.Environments[1].Version != 2 {
+		t.Fatalf("second environment = %+v, want staging v2", response.Environments[1])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("SQL expectations: %v", err)
 	}
 }
