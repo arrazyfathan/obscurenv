@@ -751,7 +751,8 @@ paths:
         the CLI has no activity command yet.
 
         Actions: `project.created`, `project.deleted`, `project.renamed`,
-        `env.pushed`, `env.deleted`. Metadata for `env.pushed` includes the
+        `project.exported`, `env.pushed`, `env.deleted`. Metadata for
+        `project.exported` includes the exported environment count, while `env.pushed` includes the
         stored `version`.
       operationId: listActivity
       parameters:
@@ -780,7 +781,7 @@ paths:
         - name: action
           in: query
           required: false
-          schema: { type: string, enum: [project.created, project.deleted, project.renamed, env.pushed, env.deleted] }
+          schema: { type: string, enum: [project.created, project.deleted, project.renamed, project.exported, env.pushed, env.deleted] }
           description: Filter by action
         - name: from
           in: query
@@ -1029,7 +1030,7 @@ components:
         id: { type: string, format: uuid }
         action:
           type: string
-          enum: [project.created, project.deleted, project.renamed, env.pushed, env.deleted]
+          enum: [project.created, project.deleted, project.renamed, project.exported, env.pushed, env.deleted]
         project_slug:
           type: [string, 'null']
           description: Denormalized so the trail survives project deletion

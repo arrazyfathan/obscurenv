@@ -155,11 +155,17 @@ func TestExportReturnsLatestEnvironmentVersions(t *testing.T) {
 	}
 	defer db.Close()
 
+	mock.ExpectQuery(`SELECT id FROM projects WHERE user_id = \$1 AND slug = \$2`).
+		WithArgs("user-1", "app").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("project-1"))
 	mock.ExpectQuery(`SELECT latest\.environment_name, latest\.version, latest\.checksum, latest\.encrypted_payload, latest\.created_at`).
 		WithArgs("user-1", "app").
 		WillReturnRows(sqlmock.NewRows([]string{"environment_name", "version", "checksum", "encrypted_payload", "created_at"}).
 			AddRow("production", 3, "sum-production", "payload-production", time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)).
 			AddRow("staging", 2, "sum-staging", "payload-staging", time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)))
+	mock.ExpectExec(`INSERT INTO activity_logs \(user_id, project_id, action, project_slug, environment_name, metadata\)`).
+		WithArgs("user-1", "project-1", ActionProjectExported, "app", nil, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {

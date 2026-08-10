@@ -15,19 +15,21 @@ import (
 )
 
 const (
-	ActionProjectCreated = "project.created"
-	ActionProjectDeleted = "project.deleted"
-	ActionProjectRenamed = "project.renamed"
-	ActionEnvPushed      = "env.pushed"
-	ActionEnvDeleted     = "env.deleted"
+	ActionProjectCreated  = "project.created"
+	ActionProjectDeleted  = "project.deleted"
+	ActionProjectRenamed  = "project.renamed"
+	ActionProjectExported = "project.exported"
+	ActionEnvPushed       = "env.pushed"
+	ActionEnvDeleted      = "env.deleted"
 )
 
 var activityActions = map[string]bool{
-	ActionProjectCreated: true,
-	ActionProjectDeleted: true,
-	ActionProjectRenamed: true,
-	ActionEnvPushed:      true,
-	ActionEnvDeleted:     true,
+	ActionProjectCreated:  true,
+	ActionProjectDeleted:  true,
+	ActionProjectRenamed:  true,
+	ActionProjectExported: true,
+	ActionEnvPushed:       true,
+	ActionEnvDeleted:      true,
 }
 
 type activityExecer interface {
@@ -71,17 +73,17 @@ type activityItem struct {
 }
 
 type activityFilter struct {
-	ProjectSlug    string
-	Action         string
-	Limit          int
-	Offset         int
-	From           time.Time
-	To             time.Time
-	HasFrom        bool
-	HasTo          bool
-	BeforeID       string
+	ProjectSlug     string
+	Action          string
+	Limit           int
+	Offset          int
+	From            time.Time
+	To              time.Time
+	HasFrom         bool
+	HasTo           bool
+	BeforeID        string
 	BeforeCreatedAt time.Time
-	HasBefore      bool
+	HasBefore       bool
 }
 
 func (h *ActivityHandler) List(c *gin.Context) {

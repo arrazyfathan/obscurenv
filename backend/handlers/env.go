@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -343,6 +344,18 @@ func (h *EnvHandler) Export(c *gin.Context) {
 		return
 	}
 
+	var projectID string
+	if err := h.db.QueryRowContext(c.Request.Context(), `
+		SELECT id FROM projects WHERE user_id = $1 AND slug = $2
+	`, middleware.UserID(c), projectSlug).Scan(&projectID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			errorJSON(c, http.StatusNotFound, "project not found")
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, "failed to find project")
+		return
+	}
+
 	rows, err := h.db.QueryContext(c.Request.Context(), `
 		SELECT latest.environment_name, latest.version, latest.checksum, latest.encrypted_payload, latest.created_at
 		FROM (
@@ -383,6 +396,12 @@ func (h *EnvHandler) Export(c *gin.Context) {
 	}
 	if err := rows.Err(); err != nil {
 		errorJSON(c, http.StatusInternalServerError, "failed to read environments")
+		return
+	}
+	if err := recordActivity(c.Request.Context(), h.db, middleware.UserID(c), projectID, ActionProjectExported, projectSlug, "", gin.H{
+		"environment_count": len(environments),
+	}); err != nil {
+		errorJSON(c, http.StatusInternalServerError, "failed to record activity")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"project_slug": projectSlug, "environments": environments})
