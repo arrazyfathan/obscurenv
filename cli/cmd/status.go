@@ -72,9 +72,27 @@ var statusCmd = &cobra.Command{
 			return nil
 		}
 		if config.ProjectID == "" {
-			rows = append(rows, []string{"Remote project", "legacy link; run obe init --relink --project " + config.ProjectSlug})
+			// Legacy configs are not identity-bound, so verify access explicitly
+			// here to detect removal and to report the owner/collaborator role.
+			linked, getErr := client.GetProject(config.ProjectSlug)
+			if getErr != nil {
+				if api.IsStatus(getErr, http.StatusNotFound) {
+					rows = append(rows, []string{"Remote project", "access lost; run obe init to relink"})
+					printTable(out, []string{"Key", "Value"}, rows)
+					return fmt.Errorf("project %q is no longer accessible; run obe init to relink this directory", config.ProjectSlug)
+				}
+				rows = append(rows, []string{"Remote project", "unavailable (" + getErr.Error() + ")"})
+				printTable(out, []string{"Key", "Value"}, rows)
+				return nil
+			}
+			project = linked
+			rows = append(rows, []string{"Remote project", "linked"})
+			rows = append(rows, []string{"Role", projectRoleLabel(project.AccessLevel)})
+			rows = append(rows, []string{"Note", "legacy config; run obe init --relink --project " + config.ProjectSlug + " to upgrade"})
 		} else if project == nil {
 			rows = append(rows, []string{"Remote project", "unavailable"})
+		} else {
+			rows = append(rows, []string{"Role", projectRoleLabel(project.AccessLevel)})
 		}
 		resp, err := client.List(config.ProjectSlug)
 		if err != nil {
@@ -134,4 +152,11 @@ func readCredentialsIfPresent() (*Credentials, error) {
 		return nil, fmt.Errorf("credentials missing token")
 	}
 	return &credentials, nil
+}
+
+func projectRoleLabel(accessLevel string) string {
+	if accessLevel == "owner" {
+		return "owner"
+	}
+	return "collaborator"
 }

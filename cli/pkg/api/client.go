@@ -56,9 +56,10 @@ type UpdateProjectNameRequest struct {
 }
 
 type ProjectResponse struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	AccessLevel string `json:"access_level"`
 }
 
 type APIError struct {
