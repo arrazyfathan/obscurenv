@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -93,6 +94,7 @@ func (h *ProjectHandler) List(c *gin.Context) {
 	query, args := listProjectsQuery(middleware.UserID(c), search)
 	rows, err := h.db.QueryContext(c.Request.Context(), query, args...)
 	if err != nil {
+		log.Printf("list projects query failed: %v", err)
 		errorJSON(c, http.StatusInternalServerError, "failed to list projects")
 		return
 	}
@@ -102,6 +104,7 @@ func (h *ProjectHandler) List(c *gin.Context) {
 	for rows.Next() {
 		project, err := scanProjectSummary(rows)
 		if err != nil {
+			log.Printf("list projects scan failed: %v", err)
 			errorJSON(c, http.StatusInternalServerError, "failed to read projects")
 			return
 		}
@@ -109,6 +112,7 @@ func (h *ProjectHandler) List(c *gin.Context) {
 		projects = append(projects, project)
 	}
 	if err := rows.Err(); err != nil {
+		log.Printf("list projects rows failed: %v", err)
 		errorJSON(c, http.StatusInternalServerError, "failed to read projects")
 		return
 	}
@@ -116,6 +120,7 @@ func (h *ProjectHandler) List(c *gin.Context) {
 	if len(projects) > 0 {
 		environmentsByProject, err := h.latestEnvironmentsByProject(c.Request.Context(), projects)
 		if err != nil {
+			log.Printf("list project environments failed: %v", err)
 			errorJSON(c, http.StatusInternalServerError, "failed to list environments")
 			return
 		}

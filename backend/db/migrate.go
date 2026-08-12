@@ -1,10 +1,36 @@
 package db
 
-import "database/sql"
+import (
+	"database/sql"
+	"fmt"
+)
 
 func Migrate(database *sql.DB) error {
-	_, err := database.Exec(schema)
-	return err
+	if _, err := database.Exec(schema); err != nil {
+		return err
+	}
+	return verifyRequiredTables(database)
+}
+
+var requiredTables = []string{"projects", "project_members", "env_versions"}
+
+func verifyRequiredTables(database *sql.DB) error {
+	for _, table := range requiredTables {
+		var exists bool
+		if err := database.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1
+				FROM information_schema.tables
+				WHERE table_schema = 'public' AND table_name = $1
+			)
+		`, table).Scan(&exists); err != nil {
+			return fmt.Errorf("verify table %s: %w", table, err)
+		}
+		if !exists {
+			return fmt.Errorf("required table %s does not exist after migration", table)
+		}
+	}
+	return nil
 }
 
 const schema = `
