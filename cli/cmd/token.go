@@ -10,8 +10,9 @@ var tokenNewName string
 var tokenNewDays int
 
 var tokenCmd = &cobra.Command{
-	Use:   "token",
-	Short: "Manage API tokens",
+	Use:    "token",
+	Short:  "Manage API tokens",
+	Hidden: true,
 }
 
 var tokenListCmd = &cobra.Command{
